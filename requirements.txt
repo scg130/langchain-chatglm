@@ -12,3 +12,6 @@ huggingface-hub>=0.30.2
 transformers==4.41.1
 tokenizers==0.19.1
 langchain-huggingface==0.3.0
+langchain_community
+
+numpy==1.26.4
