@@ -1,0 +1,11 @@
+langchain
+chromadb
+sentence-transformers
+transformers
+torch
+accelerate
+unstructured
+protobuf==3.20.3
+sentencepiece
+langchain-huggingface
+langchain-chroma
