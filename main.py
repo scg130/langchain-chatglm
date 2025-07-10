@@ -1,5 +1,6 @@
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain.chains import RetrievalQA
+from langchain.prompts import PromptTemplate
+
 from llm_chatglm import ChatGLMLLM
 from chroma_db import VectorStoreManager
 import os
