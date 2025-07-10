@@ -1,24 +1,30 @@
+from typing import Any, Optional
 from transformers import AutoTokenizer, AutoModel
+from langchain_core.runnables import Runnable
 import torch
 
-class ChatGLMLLM:
-    def __init__(self, model_name: str = "THUDM/chatglm2-6b", use_gpu: bool = False, **kwargs):
-        self.model_name = model_name
+class ChatGLMLLM(Runnable):
+    def __init__(self, model_name="/Users/v_shemingdong/.cache/chatglm2-6b", use_gpu=False, revision="main"):
         self.device = "cuda" if use_gpu and torch.cuda.is_available() else "cpu"
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            model_name, trust_remote_code=True,revision=revision
+        )
+        self.model = AutoModel.from_pretrained(
+            model_name, trust_remote_code=True, revision=revision
+        )
+        self.model = self.model.half().cuda() if self.device == "cuda" else self.model.float().cpu()
+        self.model.eval()
 
-        print(f"加载模型到设备: {self.device}")
-        self._tokenizer = AutoTokenizer.from_pretrained(self.model_name, trust_remote_code=True)
+    from typing import Any, Optional
 
-        # 根据设备类型加载模型
-        self._model = AutoModel.from_pretrained(self.model_name, trust_remote_code=True)
-        if self.device == "cuda":
-            self._model = self._model.half().cuda()
-        else:
-            self._model = self._model.float().cpu()
+    def invoke(self, query: str, config: Optional[dict] = None, **kwargs) -> str:
+        if not query:
+            raise ValueError("输入 query 不能为空")
 
-        self._model.eval()
+        # 接受但忽略额外参数
+        # stop = kwargs.get("stop")
 
-    def chat(self, prompt: str) -> str:
-        """与模型进行简单对话"""
-        response, _ = self._model.chat(self._tokenizer, prompt, history=[])
+        response, _ = self.model.chat(self.tokenizer, query, history=[])
         return response
+
+

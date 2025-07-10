@@ -53,5 +53,5 @@ if __name__ == "__main__":
         query = input("❓ 用户问题：")
         if query.lower() in ["exit", "quit"]:
             break
-        result = qa_chain.run(query)
+        result = qa_chain.invoke(query)
         print("💡 答案：", result)
