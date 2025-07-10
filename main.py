@@ -4,6 +4,7 @@ from langchain.prompts import PromptTemplate
 from llm_chatglm import ChatGLMLLM
 from chroma_db import VectorStoreManager
 import os
+import sys
 
 # 初始化 QA chain
 def get_qa_chain(vectordb):
@@ -50,7 +51,8 @@ if __name__ == "__main__":
     qa_chain = get_qa_chain(vectordb)
 
     while True:
-        query = input("❓ 用户问题：")
+        print("❓ 用户问题：", end='', flush=True)
+        query = sys.stdin.buffer.readline().decode('utf-8').strip()
         if query.lower() in ["exit", "quit"]:
             break
         result = qa_chain.invoke(query)
