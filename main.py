@@ -7,7 +7,7 @@ import os
 import sys
 from langchain.memory import ConversationBufferWindowMemory
 
-memory = ConversationBufferWindowMemory(k=2, return_messages=True)
+memory = ConversationBufferWindowMemory(k=2, return_messages=True，output_key="result",)
 
 # 初始化 QA chain
 def get_qa_chain(vectordb):
