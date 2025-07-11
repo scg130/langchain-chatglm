@@ -7,22 +7,27 @@ from langchain.prompts import PromptTemplate
 import os
 from langchain.memory import ConversationBufferWindowMemory
 
-memory = ConversationBufferWindowMemory(k=2, return_messages=True,output_key="result")
+memory = ConversationBufferWindowMemory(
+    k=2, return_messages=True, output_key="result")
 
 app = FastAPI()
+
 
 class AskRequest(BaseModel):
     question: str
 
-# 初始化向量库和 QA chain（全局只初始化一次）
-manager = VectorStoreManager()
-if not os.path.exists("chroma_store/adc7fd08-6721-4d0a-8bbe-471abb238ce9"):
-    # 这里假设 adc7fd08-6721-4d0a-8bbe-471abb238ce9 是 index 文件夹
-    docs = manager.load_docs()
-    manager.add_documents(docs)
-    vectordb = manager.get_vectorstore()
-else:
-    vectordb = manager.get_vectorstore()
+
+manager = VectorStoreManager(persist_dir="./chroma_store")
+docs = manager.load_documents(
+    input_path="./data",
+    file_pattern="**/*.txt",
+    chunk_size=1000,  # 大文档使用更大的分块
+    chunk_overlap=100
+)
+result = manager.add_documents(docs, batch_size=2000)
+print(f"导入成功率: {result['added']/result['total']:.1%}")
+vectordb = manager.get_vectorstore()
+
 
 def get_qa_chain(vectordb):
     retriever = vectordb.as_retriever(search_kwargs={"k": 3})
@@ -52,13 +57,15 @@ def get_qa_chain(vectordb):
     )
     return qa_chain
 
+
 qa_chain = get_qa_chain(vectordb)
+
 
 @app.post("/ask")
 async def ask(request: AskRequest):
     question = request.question
     print(question)
-    result =   qa_chain.invoke(question)
+    result = qa_chain.invoke(question)
     # result 可能是 dict，包含 answer 和 source_documents
     if isinstance(result, dict):
         answer = result.get("result") or result.get("answer") or str(result)

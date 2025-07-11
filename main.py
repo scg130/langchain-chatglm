@@ -1,15 +1,19 @@
-from langchain.chains import RetrievalQA
-from langchain.prompts import PromptTemplate
-
-from llm_chatglm import ChatGLMLLM
-from chroma_db import VectorStoreManager
 import os
 import sys
-from langchain.memory import ConversationBufferWindowMemory
 
-memory = ConversationBufferWindowMemory(k=2, return_messages=True,output_key="result")
+from langchain.chains import RetrievalQA
+from langchain.memory import ConversationBufferWindowMemory
+from langchain.prompts import PromptTemplate
+
+from chroma_db import VectorStoreManager
+from llm_chatglm import ChatGLMLLM
+
+memory = ConversationBufferWindowMemory(
+    k=2, return_messages=True, output_key="result")
 
 # 初始化 QA chain
+
+
 def get_qa_chain(vectordb):
     retriever = vectordb.as_retriever(search_kwargs={"k": 3})
     llm = ChatGLMLLM()
@@ -40,17 +44,18 @@ def get_qa_chain(vectordb):
     )
     return qa_chain
 
+
 if __name__ == "__main__":
-    manager = VectorStoreManager()
-    if not os.path.exists("chroma_store/index"):
-        print("🔄 正在构建向量库...")
-        docs = manager.load_docs()
-        manager.add_documents(docs)
-        print("✅ 向量库构建完成！")
-        vectordb = manager.get_vectorstore()
-    else:
-        print("✅ 加载已有向量库...")
-        vectordb = manager.get_vectorstore()
+    manager = VectorStoreManager(persist_dir="./chroma_store")
+    docs = manager.load_documents(
+        input_path="./data",
+        file_pattern="**/*.txt",
+        chunk_size=1000,  # 大文档使用更大的分块
+        chunk_overlap=100
+    )
+    result = manager.add_documents(docs, batch_size=2000)
+    print(f"导入成功率: {result['added']/result['total']:.1%}")
+    vectordb = manager.get_vectorstore()
 
     qa_chain = get_qa_chain(vectordb)
 
