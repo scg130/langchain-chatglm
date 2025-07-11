@@ -1,8 +1,8 @@
 import os
 import sys
 
-from chroma_db import VectorStoreManager
-from func import get_qa_chain
+from chroma.chroma_db import VectorStoreManager
+from util.func import get_qa_chain
 
 if __name__ == "__main__":
     manager = VectorStoreManager(persist_dir="./chroma_store")
