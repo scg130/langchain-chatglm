@@ -7,7 +7,7 @@ from langchain.prompts import PromptTemplate
 import os
 from langchain.memory import ConversationBufferWindowMemory
 
-memory = ConversationBufferWindowMemory(k=2, return_messages=True)
+memory = ConversationBufferWindowMemory(k=2, return_messages=True,output_key="result")
 
 app = FastAPI()
 
