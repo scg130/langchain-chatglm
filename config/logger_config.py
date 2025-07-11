@@ -5,7 +5,7 @@ import sys
 def setup_logger():
     """配置并返回全局logger"""
     logger = logging.getLogger("app")  # 使用固定名称而非__name__
-    logger.setLevel(logging.INFO)
+    logger.setLevel(logging.DEBUG)
     
     formatter = logging.Formatter(
         '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
