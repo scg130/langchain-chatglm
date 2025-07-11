@@ -5,6 +5,9 @@ from llm_chatglm import ChatGLMLLM
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 import os
+from langchain.memory import ConversationBufferWindowMemory
+
+memory = ConversationBufferWindowMemory(k=2, return_messages=True)
 
 app = FastAPI()
 
@@ -44,7 +47,8 @@ def get_qa_chain(vectordb):
         llm=llm,
         retriever=retriever,
         return_source_documents=True,
-        chain_type_kwargs={"prompt": prompt}
+        chain_type_kwargs={"prompt": prompt},
+        memory=memory
     )
     return qa_chain
 

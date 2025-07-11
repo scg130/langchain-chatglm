@@ -12,7 +12,7 @@ class ChatGLMLLM(Runnable):
         self.model = AutoModel.from_pretrained(
             model_name, trust_remote_code=True, revision=revision
         )
-        self.model = self.model.half().cuda() if self.device == "cuda" else self.model.float().cpu()
+        self.model = self.model.quantize(4).half().cuda() if self.device == "cuda" else self.model.float().cpu()
         self.model.eval()
 
     from typing import Any, Optional

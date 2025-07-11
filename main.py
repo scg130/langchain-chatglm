@@ -5,6 +5,9 @@ from llm_chatglm import ChatGLMLLM
 from chroma_db import VectorStoreManager
 import os
 import sys
+from langchain.memory import ConversationBufferWindowMemory
+
+memory = ConversationBufferWindowMemory(k=2, return_messages=True)
 
 # 初始化 QA chain
 def get_qa_chain(vectordb):
@@ -32,7 +35,8 @@ def get_qa_chain(vectordb):
         llm=llm,
         retriever=retriever,
         return_source_documents=True,
-        chain_type_kwargs={"prompt": prompt}
+        chain_type_kwargs={"prompt": prompt},
+        memory=memory
     )
     return qa_chain
 
