@@ -4,8 +4,8 @@ from langchain_core.runnables import Runnable
 import torch
 
 class ChatGLMLLM(Runnable):
-    def __init__(self, model_name="THUDM/chatglm2-6b", use_gpu=False, revision="main"):
-        self.device = "cuda" if use_gpu and torch.cuda.is_available() else "cpu"
+    def __init__(self, model_name="THUDM/chatglm2-6b",  revision="main"):
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.tokenizer = AutoTokenizer.from_pretrained(
             model_name, trust_remote_code=True,revision=revision
         )

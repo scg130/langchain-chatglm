@@ -54,7 +54,7 @@ qa_chain = get_qa_chain(vectordb)
 async def ask(request: AskRequest):
     question = request.question
     print(question)
-    result = qa_chain.invoke(question)
+    result = await  qa_chain.invoke(question)
     # result 可能是 dict，包含 answer 和 source_documents
     if isinstance(result, dict):
         answer = result.get("result") or result.get("answer") or str(result)
