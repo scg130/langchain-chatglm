@@ -1,5 +1,7 @@
 venv/
 .DS_Store
 __pycache__/
-chroma_store/
+chroma_store/*
 *.pyc
+web.log
+qntc.txt
