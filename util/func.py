@@ -1,9 +1,10 @@
 from langchain.chains import RetrievalQA
 from langchain.memory import ConversationBufferWindowMemory
 from langchain.prompts import PromptTemplate
+
+from chatglm.llm_chatglm import ChatGLMLLM
 from chroma.chroma_db import VectorStoreManager
 from config.logger_config import logger
-from chatglm.llm_chatglm import ChatGLMLLM
 
 memory = ConversationBufferWindowMemory(
     k=2, return_messages=True, output_key="result")
@@ -37,22 +38,25 @@ def get_qa_chain(vectordb):
     )
     return qa_chain
 
-# 初始化全局组件
-manager = VectorStoreManager(persist_dir="./chroma_store")
 
-def initialize_vectordb():
+# 初始化全局组件
+manager = VectorStoreManager()
+
+
+def initialize_vectordb(dir_path: str):
     """初始化向量数据库"""
     try:
         logger.info("⏳ 正在加载文档到向量数据库...")
         docs = manager.load_documents(
-            input_path="./data",
-            file_pattern="**/*.txt",
+            input_path=dir_path,
+            file_pattern="**/*",
             chunk_size=1000,
             chunk_overlap=100
         )
-        result = manager.add_documents(docs, batch_size=2000)
+        result = manager.add_documents(
+            dir_path=dir_path, new_docs=docs, batch_size=2000)
         logger.info(f"✅ 文档加载完成. 成功率: {result['added']/result['total']:.1%}")
-        return manager.get_vectorstore()
+        return manager.get_vectorstore(dir_path=dir_path)
     except Exception as e:
         logger.error(f"❌ 文档加载失败: {str(e)}")
         raise

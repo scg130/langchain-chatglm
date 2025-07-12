@@ -1,6 +1,6 @@
 import hashlib
 import os
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from langchain.schema import Document
 from langchain.text_splitter import (RecursiveCharacterTextSplitter,
@@ -17,7 +17,6 @@ class VectorStoreManager:
     def __init__(
         self,
         persist_dir: str = "./chroma_store",
-        embedding_model: str = "shibing624/text2vec-base-chinese",
         chunk_size: int = 500,
         chunk_overlap: int = 50
     ):
@@ -32,10 +31,7 @@ class VectorStoreManager:
         """
         self.persist_dir = persist_dir
         self.embedding = HuggingFaceEmbeddings(model_name=embedding_model)
-        self.vectordb = Chroma(
-            persist_directory=self.persist_dir,
-            embedding_function=self.embedding
-        )
+        self.vectordbs: Dict[str, Chroma] = {}  # 路径到向量库的映射字典
         self.default_chunk_size = chunk_size
         self.default_chunk_overlap = chunk_overlap
 
@@ -108,10 +104,10 @@ class VectorStoreManager:
 
         return docs
 
-    def _existing_hashes(self) -> set:
+    def _existing_hashes(self, dir_path: str) -> set:
         """获取当前库中已有文档的content_hash集合"""
         try:
-            results = self.vectordb.get(include=["metadatas"])
+            results = self.get_vectorstore(dir_path).get(include=["metadatas"])
             return {m["content_hash"] for m in results["metadatas"] if "content_hash" in m}
         except Exception as e:
             print(f"⚠️ 获取现有哈希失败: {str(e)}")
@@ -119,6 +115,7 @@ class VectorStoreManager:
 
     def add_documents(
         self,
+        dir_path: str,
         new_docs: List[Document],
         batch_size: int = 4000,
         show_progress: bool = True
@@ -139,7 +136,7 @@ class VectorStoreManager:
             return {"total": 0, "added": 0, "duplicates": 0, "failed": 0}
 
         # 去重处理
-        existing_hashes = self._existing_hashes()
+        existing_hashes = self._existing_hashes(dir_path=dir_path)
         filtered_docs = []
         duplicate_count = 0
 
@@ -156,7 +153,7 @@ class VectorStoreManager:
         for i in range(0, len(filtered_docs), batch_size):
             batch = filtered_docs[i:i + batch_size]
             try:
-                self.vectordb.add_documents(batch)
+                self.get_vectorstore(dir_path).add_documents(batch)
                 added_count += len(batch)
                 if show_progress:
                     print(
@@ -186,6 +183,7 @@ class VectorStoreManager:
 
     def delete_documents(
         self,
+        dir_path: str,
         ids: Optional[List[str]] = None,
         source_path: Optional[str] = None,
         content_hash: Optional[str] = None
@@ -205,7 +203,8 @@ class VectorStoreManager:
             if ids:
                 ids_to_delete = ids
             else:
-                results = self.vectordb.get(include=["metadatas", "ids"])
+                results = self.get_vectorstore(dir_path).get(
+                    include=["metadatas", "ids"])
                 ids_to_delete = []
 
                 for doc_id, meta in zip(results["ids"], results["metadatas"]):
@@ -216,7 +215,7 @@ class VectorStoreManager:
 
             # 执行删除
             if ids_to_delete:
-                self.vectordb.delete(ids=ids_to_delete)
+                self.get_vectorstore(dir_path).delete(ids=ids_to_delete)
                 print(f"🗑️ 已删除 {len(ids_to_delete)} 条文档")
                 return len(ids_to_delete)
 
@@ -227,14 +226,25 @@ class VectorStoreManager:
             print(f"❌ 删除失败: {str(e)}")
             return 0
 
-    def get_vectorstore(self) -> Chroma:
+    def get_vectorstore(self, dir_path: str) -> Chroma:
         """获取底层向量数据库实例"""
-        return self.vectordb
+        # 定义嵌入模型
+        embedding = HuggingFaceEmbeddings(
+            model_name="shibing624/text2vec-base-chinese")
 
-    def optimize_storage(self):
+        # 创建空集合
+        vectordb = Chroma(
+            collection_name=dir_path,
+            embedding_function=embedding,
+            persist_directory=self.persist_dir
+        )
+        self.vectordbs[dir_path] = vectordb
+        return vectordb
+
+    def optimize_storage(self, dir_path: str):
         """优化存储（ChromaDB内部压缩）"""
         try:
-            self.vectordb.persist()
+            self.get_vectorstore(dir_path).persist()
             print("✅ 存储优化完成")
         except Exception as e:
             print(f"❌ 优化失败: {str(e)}")
