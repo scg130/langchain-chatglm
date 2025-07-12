@@ -9,7 +9,7 @@ class QAService:
     async def initialize(self):
         """初始化QA服务"""
         try:
-            dir_path = "./data/qntc"
+            dir_path = "./data"
             vectordb = initialize_vectordb(dir_path=dir_path)
             self.qa_chain = get_qa_chain(vectordb)
             logger.info("QA服务初始化完成")
