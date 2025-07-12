@@ -262,7 +262,6 @@ class VectorStoreManager:
                 stats["failed"] += len(batch)
                 self.logger.error(f"Batch add failed: {str(e)}")
 
-        vectordb.persist()
         return stats
 
     def _get_existing_hashes(self, vectordb: Chroma) -> Set[str]:
