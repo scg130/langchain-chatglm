@@ -4,7 +4,13 @@ import os
 from typing import Dict, List, Optional, Set, Union
 
 from chromadb import PersistentClient
-from chromadb.errors import CollectionNotFound
+
+try:
+    from chromadb.errors import CollectionNotFound
+except ImportError:
+    # 旧版本 ChromaDB 的异常类位置
+    from chromadb.api.exceptions import CollectionNotFound
+
 from langchain.schema import Document
 from langchain.text_splitter import (RecursiveCharacterTextSplitter,
                                      TextSplitter)
