@@ -5,12 +5,22 @@ from typing import Dict, List, Optional, Set, Union
 
 from chromadb import PersistentClient
 
+# chroma_db.py 顶部添加以下代码
 try:
+    # 新版本 ChromaDB (>=0.4.0)
     from chromadb.errors import CollectionNotFound
 except ImportError:
-    # 旧版本 ChromaDB 的异常类位置
-    from chromadb.api.exceptions import CollectionNotFound
+    try:
+        # 旧版本 ChromaDB (<0.4.0)
+        from chromadb.api.exceptions import CollectionNotFound
+    except ImportError:
+        # 最新版本 (如 0.5.0+) 或其他情况
+        class CollectionNotFound(Exception):
+            """自定义异常类用于兼容"""
+            pass
 
+# 然后继续原有导入
+from chromadb import PersistentClient
 from langchain.schema import Document
 from langchain.text_splitter import (RecursiveCharacterTextSplitter,
                                      TextSplitter)
@@ -21,6 +31,8 @@ from langchain_community.document_loaders import (DirectoryLoader,
                                                   UnstructuredFileLoader)
 from langchain_huggingface import HuggingFaceEmbeddings
 from tqdm import tqdm
+
+# ... 其他导入 ...
 
 
 class VectorStoreManager:
