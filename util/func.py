@@ -1,5 +1,5 @@
 from langchain.chains import RetrievalQA
-from langchain.memory import ConversationBufferMemory
+from langchain.memory import ConversationBufferWindowMemory
 
 from langchain.prompts import PromptTemplate
 
@@ -15,12 +15,15 @@ history = RedisChatMessageHistory(
             key_prefix="message_store:"
         )
 
-memory = ConversationBufferMemory(
+memory = ConversationBufferWindowMemory(
     k=2,
+    memory_key="chat_history",
+    chat_memory=history,
     return_messages=True,
     output_key="result",
-    chat_memory=history,
+    input_key="question"
     )
+
 
 
 def get_qa_chain(vectordb):
