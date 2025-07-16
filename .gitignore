@@ -4,4 +4,4 @@ __pycache__/
 chroma_store/
 *.pyc
 app.log
-chroma_store/chroma.sqlite3
+chroma_store/*
