@@ -1,13 +1,26 @@
 from langchain.chains import RetrievalQA
-from langchain.memory import ConversationBufferWindowMemory
+from langchain.memory import ConversationBufferMemory
+
 from langchain.prompts import PromptTemplate
 
+from langchain_community.chat_message_histories import RedisChatMessageHistory
 from chatglm.llm_chatglm import ChatGLMLLM
 from chroma.chroma_db import VectorStoreManager
 from config.logger_config import logger
 
-memory = ConversationBufferWindowMemory(
-    k=2, return_messages=True, output_key="result")
+history = RedisChatMessageHistory(
+            session_id = "your-session-id",
+            url="redis://localhost:6379/0",  # redis://:password@localhost:6379/0
+            ttl=3600,  # 设置TTL为1小时
+            key_prefix="message_store:"
+        )
+
+memory = ConversationBufferMemory(
+    k=2,
+    return_messages=True,
+    output_key="result",
+    chat_memory=history,
+    )
 
 
 def get_qa_chain(vectordb):
