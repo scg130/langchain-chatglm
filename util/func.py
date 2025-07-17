@@ -10,7 +10,7 @@ from config.logger_config import logger
 
 history = RedisChatMessageHistory(
             session_id = "your-session-id",
-            url="redis://localhost:6379/0",  # redis://:password@localhost:6379/0
+            url="redis://:smd013012@localhost:6379/0",  # redis://:password@localhost:6379/0
             ttl=3600,  # 设置TTL为1小时
             key_prefix="message_store:"
         )
