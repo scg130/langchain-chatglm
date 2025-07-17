@@ -11,20 +11,19 @@ async def ask(request: AskRequest):
         if not request.question or not request.question.strip():
             raise HTTPException(
                 status_code=400,
-                detail="Question cannot be empty"
+                detail="问题不能为空"
             )
             
         result = await qa_service.ask_question(request.question)
-        
-        # Improved response extraction
-        answer = str(result.get("result", result.get("answer", result)))
-        
-        return AskResponse(answer=answer)
+        return AskResponse(
+            answer=result.get("answer", ""),
+            sources=result.get("sources", [])
+        )
         
     except HTTPException:
-        raise  # Re-raise existing HTTP exceptions
+        raise
     except Exception as e:
-        logger.exception(f"提问处理失败: {e}")  # Logs full traceback
+        logger.exception(f"提问处理失败: {e}")
         raise HTTPException(
             status_code=500,
             detail=f"处理问题时出错: {str(e)}"

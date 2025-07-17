@@ -5,49 +5,53 @@ from typing import Dict, Any
 class QAService:
     def __init__(self):
         self.qa_chain = None
-        self.input_key = None  # Will store the expected input key
+        self.input_key = 'query'  # 默认使用'query'，但会在初始化时检测
+        self.memory_input_key = 'input'  # 内存系统通常使用'input'
 
     async def initialize(self):
-        """Initialize QA service"""
+        """Initialize QA service with proper key detection"""
         try:
             dir_path = "./data"
             vectordb = initialize_vectordb(dir_path=dir_path)
             self.qa_chain = get_qa_chain(vectordb)
             
-            # Determine the expected input key
-            if hasattr(self.qa_chain, 'input_keys'):
-                self.input_key = self.qa_chain.input_keys[0]  # Get first expected input key
-            else:
-                self.input_key = 'query'  # Default to 'query' if not specified
+            # 自动检测输入键
+            if hasattr(self.qa_chain, 'input_keys') and self.qa_chain.input_keys:
+                self.input_key = self.qa_chain.input_keys[0]
             
-            logger.info(f"QA service initialized successfully (expects input key: '{self.input_key}')")
+            # 检测内存系统需要的键
+            if hasattr(self.qa_chain, 'memory') and self.qa_chain.memory:
+                if hasattr(self.qa_chain.memory, 'input_key'):
+                    self.memory_input_key = self.qa_chain.memory.input_key
+            
+            logger.info(f"QA服务初始化完成 - 输入键: '{self.input_key}', 内存输入键: '{self.memory_input_key}'")
         except Exception as e:
-            logger.error(f"QA service initialization failed: {str(e)}")
+            logger.error(f"QA服务初始化失败: {str(e)}")
             raise
 
     async def ask_question(self, question: str) -> Dict[str, Any]:
-        """Handle user question"""
+        """处理用户问题，确保使用正确的键"""
         if not self.qa_chain:
-            raise RuntimeError("QA service not initialized")
+            raise RuntimeError("QA服务未初始化")
 
         try:
-            # Format the input with the correct expected key
+            # 准备符合链期望的输入格式
             inputs = {self.input_key: question}
+            
+            # 如果链有内存，确保内存系统也能获取到输入
+            if hasattr(self.qa_chain, 'memory') and self.qa_chain.memory:
+                inputs[self.memory_input_key] = question
+            
             result = self.qa_chain.invoke(inputs)
             
-            # Handle different response formats
-            if isinstance(result, dict):
-                return {
-                    "result": result.get("result", ""),
-                    "answer": result.get("answer", ""),
-                    "source_documents": result.get("source_documents", [])
-                }
-            return {"result": str(result)}
+            return {
+                "answer": result.get("result", result.get("answer", str(result))),
+                "sources": result.get("source_documents", [])
+            }
             
         except Exception as e:
-            logger.error(f"Error processing question: {str(e)}")
-            raise RuntimeError(f"Failed to process question: {str(e)}")
+            logger.error(f"处理问题时出错: {str(e)}")
+            raise RuntimeError(f"处理问题失败: {str(e)}")
 
-
-# Global service instance
+# 全局服务实例
 qa_service = QAService()
