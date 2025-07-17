@@ -5,6 +5,7 @@ from typing import Dict, Any
 class QAService:
     def __init__(self):
         self.qa_chain = None
+        self.input_key = None  # Will store the expected input key
 
     async def initialize(self):
         """Initialize QA service"""
@@ -12,7 +13,14 @@ class QAService:
             dir_path = "./data"
             vectordb = initialize_vectordb(dir_path=dir_path)
             self.qa_chain = get_qa_chain(vectordb)
-            logger.info("QA service initialized successfully")
+            
+            # Determine the expected input key
+            if hasattr(self.qa_chain, 'input_keys'):
+                self.input_key = self.qa_chain.input_keys[0]  # Get first expected input key
+            else:
+                self.input_key = 'query'  # Default to 'query' if not specified
+            
+            logger.info(f"QA service initialized successfully (expects input key: '{self.input_key}')")
         except Exception as e:
             logger.error(f"QA service initialization failed: {str(e)}")
             raise
@@ -23,8 +31,8 @@ class QAService:
             raise RuntimeError("QA service not initialized")
 
         try:
-            # Format the input as expected by the chain
-            inputs = {"question": question}
+            # Format the input with the correct expected key
+            inputs = {self.input_key: question}
             result = self.qa_chain.invoke(inputs)
             
             # Handle different response formats
