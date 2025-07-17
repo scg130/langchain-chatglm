@@ -30,9 +30,6 @@ def get_qa_chain(vectordb):
     retriever = vectordb.as_retriever(search_kwargs={"k": 3})
     llm = ChatGLMLLM()
     prompt_template = """
-    你是一个专业的知识问答助手，根据提供的内容，简洁准确地回答用户的问题。
-    如果内容不足以回答，请礼貌告知用户无法回答。
-
     上下文内容：
     {context}
 
