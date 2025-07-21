@@ -1,8 +1,9 @@
-from typing import Any, Optional
+from typing import Any, Optional, List, Tuple
 from transformers import AutoTokenizer, AutoModel
 from langchain_core.runnables import Runnable
 from config.logger_config import logger
 import torch
+
 
 class ChatGLMLLM(Runnable):
     def __init__(self, 
@@ -13,31 +14,48 @@ class ChatGLMLLM(Runnable):
         self.model_name = model_name_cuda if self.device == "cuda" else model_name_cpu
         logger.info(f'Using device: {self.device}')
         logger.info(f'Loading model: {self.model_name}')
-        # 加载 tokenizer
+
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.model_name, trust_remote_code=True, revision=revision
         )
-        # 加载模型
         self.model = AutoModel.from_pretrained(
             self.model_name, trust_remote_code=True, revision=revision
         )
-        # 设置模型精度与设备
+
         if self.device == "cuda":
             self.model = self.model.half().cuda()
         else:
             self.model = self.model.float().cpu()
+
         self.model.eval()
 
-    from typing import Any, Optional
+        # 初始化历史对话记录
+        self.history: List[Tuple[str, str]] = []
 
     def invoke(self, query: str, config: Optional[dict] = None, **kwargs) -> str:
         if not query:
             raise ValueError("输入 query 不能为空")
 
-        # 接受但忽略额外参数
-        # stop = kwargs.get("stop")
+        reset_history = config.get("reset_history", False) if config else False
+        if reset_history or not hasattr(self, "_history"):
+            self._history = []
 
-        response, _ = self.model.chat(self.tokenizer, query, history=[])
-        return response
+        try:
+            result = self.model.chat(self.tokenizer, query, history=self._history)
 
+            # 打印调试信息，确认返回值
+            logger.info(f"model.chat 返回值类型: {type(result)}")
+            logger.info(f"model.chat 返回值内容: {result}")
+
+            if isinstance(result, tuple) and len(result) == 2:
+                response, self._history = result
+            else:
+                response = result
+                self._history.append((query, response))
+
+            return response
+
+        except Exception as e:
+            logger.error(f"invoke 模型调用失败: {e}")
+            raise RuntimeError(f"处理问题失败: {str(e)}")
 
