@@ -1,3 +1,5 @@
+python 3.10.14
+
 pip install -r requrements.txt
 
 huggingface 镜像（如清华源）

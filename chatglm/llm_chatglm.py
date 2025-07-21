@@ -1,18 +1,31 @@
 from typing import Any, Optional
 from transformers import AutoTokenizer, AutoModel
 from langchain_core.runnables import Runnable
+from config.logger_config import logger
 import torch
 
 class ChatGLMLLM(Runnable):
-    def __init__(self, model_name="THUDM/chatglm2-6b",  revision="main"):
+    def __init__(self, 
+                 model_name_cuda="THUDM/chatglm2-6b", 
+                 model_name_cpu="THUDM/chatglm2-6b-int4", 
+                 revision="main"):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.model_name = model_name_cuda if self.device == "cuda" else model_name_cpu
+        logger.info(f'Using device: {self.device}')
+        logger.info(f'Loading model: {self.model_name}')
+        # 加载 tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(
-            model_name, trust_remote_code=True,revision=revision
+            self.model_name, trust_remote_code=True, revision=revision
         )
+        # 加载模型
         self.model = AutoModel.from_pretrained(
-            model_name, trust_remote_code=True, revision=revision
+            self.model_name, trust_remote_code=True, revision=revision
         )
-        self.model = self.model.half().cuda() if self.device == "cuda" else self.model.float().cpu()
+        # 设置模型精度与设备
+        if self.device == "cuda":
+            self.model = self.model.half().cuda()
+        else:
+            self.model = self.model.float().cpu()
         self.model.eval()
 
     from typing import Any, Optional
