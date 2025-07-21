@@ -65,8 +65,11 @@ class ChatGLMLLM(Runnable):
                 inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
                 outputs = self.model.generate(
                     **inputs,
-                    max_new_tokens=256,
-                    do_sample=False
+                    max_new_tokens=64,   # 控制生成长度
+                    do_sample=False,     # 关闭采样
+                    temperature=0.7,
+                    top_p=0.95,
+                    repetition_penalty=1.1
                 )
                 response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
                 response = response[len(prompt):].strip()
