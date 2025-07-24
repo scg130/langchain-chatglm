@@ -14,7 +14,7 @@ async def ask(request: AskRequest):
                 detail="问题不能为空"
             )
             
-        result = await qa_service.ask_question(request.question)
+        result = await qa_service.ask_question(request.question.to_string())
         return AskResponse(
             answer=result.get("answer", ""),
             sources=result.get("sources", [])
