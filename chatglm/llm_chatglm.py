@@ -69,37 +69,57 @@ class ChatGLMLLM(Runnable):
             logger.error(f"模型初始化失败：{e}")
             raise RuntimeError(f"模型初始化失败：{str(e)}")
 
+    def _truncate_query(self, query: str, max_query_tokens: int = 1024) -> str:
+        query_tokens = self.tokenizer(str(query)).input_ids
+        if len(query_tokens) > max_query_tokens:
+            query_tokens = query_tokens[:max_query_tokens]
+            query = self.tokenizer.decode(query_tokens, skip_special_tokens=True)
+        return str(query)
+
+    def _truncate_history(self) -> List[Tuple[str, str]]:
+        """截断历史对话，保证token数量不超过max_total_tokens"""
+        max_len = self.max_total_tokens
+        truncated_history = []
+        total_tokens = 0
+        # 从最新到最旧遍历历史
+        for q, a in reversed(self._history):
+            q_tokens = len(self.tokenizer.encode(q, add_special_tokens=False))
+            a_tokens = len(self.tokenizer.encode(a, add_special_tokens=False))
+            round_tokens = q_tokens + a_tokens
+
+            if total_tokens + round_tokens > max_len:
+                break
+            truncated_history.insert(0, (q, a))  # 头部插入，保持时间顺序
+            total_tokens += round_tokens
+        return truncated_history
+
     def invoke(self, query: str, config: Optional[dict] = None, **kwargs) -> str:
         if not isinstance(config, dict):
             config = {}
 
-        # 无论何时调用，都清空历史，或者直接不使用历史
-        self._history = []
-
         query = str(query)
-
         try:
-            # 不再截断历史，直接只截断当前query
             query = self._truncate_query(query, max_query_tokens=1024)
-
             logger.info(f"调用invoke，query: {query}")
 
             if self.is_chatglm:
-                # 传入空的历史
-                result = self.model.chat(self.tokenizer, query, history=[])
+                truncated_history = self._truncate_history()
+                result = self.model.chat(self.tokenizer, query, history=truncated_history)
+
                 if isinstance(result, tuple) and len(result) == 2:
-                    response, _ = result  # 不保存历史
+                    response, _ = result
                 else:
                     response = result
+
+                self._history.append((query, response))
                 logger.info(f"ChatGLM模型回复: {response}")
                 return response
 
             else:
+                # 普通模型不支持多轮历史，history只记录，实际调用时只用当前query
                 prompt = f"用户：{query}\n助手："
-
                 tokens = self.tokenizer(prompt, truncation=True, max_length=self.max_total_tokens)
                 prompt = self.tokenizer.decode(tokens.input_ids, skip_special_tokens=True)
-
                 inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
 
                 outputs = self.model.generate(
@@ -111,8 +131,12 @@ class ChatGLMLLM(Runnable):
                     repetition_penalty=1.1
                 )
 
-                response = self.tokenizer.decode(outputs[0][inputs['input_ids'].shape[-1]:], skip_special_tokens=True).strip()
+                response = self.tokenizer.decode(
+                    outputs[0][inputs['input_ids'].shape[-1]:],
+                    skip_special_tokens=True
+                ).strip()
 
+                self._history.append((query, response))
                 logger.info(f"普通模型回复: {response}")
                 return response
 
@@ -120,3 +144,5 @@ class ChatGLMLLM(Runnable):
             logger.error(f"invoke 模型调用失败: {e}, query: {query}", exc_info=True)
             raise RuntimeError(f"处理问题失败: {str(e)}")
 
+    def get_history(self) -> List[Tuple[str, str]]:
+        return self._history

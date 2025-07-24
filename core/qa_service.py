@@ -38,10 +38,6 @@ class QAService:
             # 准备符合链期望的输入格式
             inputs = {self.input_key: question}
             
-            # 如果链有内存，确保内存系统也能获取到输入
-            if hasattr(self.qa_chain, 'memory') and self.qa_chain.memory:
-                inputs[self.memory_input_key] = question
-            
             result = self.qa_chain.invoke(inputs)
             
             return {

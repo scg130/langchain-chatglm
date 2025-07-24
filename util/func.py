@@ -21,7 +21,7 @@ def get_memory():
             key_prefix="message_store:"
         )
         memory = ConversationBufferWindowMemory(
-            k=2,
+            k=20,
             memory_key="chat_history",
             chat_memory=history,
             return_messages=True,
