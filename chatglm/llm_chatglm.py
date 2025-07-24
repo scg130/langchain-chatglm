@@ -104,7 +104,10 @@ class ChatGLMLLM(Runnable):
         return query
 
     def invoke(self, query: str, config: Optional[dict] = None, **kwargs) -> str:
-        if not query:
+        # 类型检查：query 必须是非空字符串
+        if not isinstance(query, str):
+            raise ValueError(f"输入 query 类型错误，必须是字符串，实际类型: {type(query)}")
+        if not query.strip():
             raise ValueError("输入 query 不能为空")
 
         if not isinstance(config, dict):
@@ -113,6 +116,9 @@ class ChatGLMLLM(Runnable):
         reset_history = config.get("reset_history", False)
         if reset_history:
             self._history = []
+
+        # 确保历史中所有 q,a 都是字符串，防止类型错误
+        self._history = [(str(q), str(a)) for q, a in self._history]
 
         try:
             # 统一截断历史，防止上下文过长
@@ -159,3 +165,4 @@ class ChatGLMLLM(Runnable):
         except Exception as e:
             logger.error(f"invoke 模型调用失败: {e}, query: {query}", exc_info=True)
             raise RuntimeError(f"处理问题失败: {str(e)}")
+
