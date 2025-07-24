@@ -95,12 +95,13 @@ class ChatGLMLLM(Runnable):
         query = str(query)
         question = extract_question(query)
         try:
+            logger.info(f"调用invoke，query: {query}")
             logger.info(f"调用invoke，query: {question}")
 
             if self.is_chatglm:
                 truncated_history = self._truncate_history()
                 logger.info(f"调用invoke，history: {truncated_history}")
-                result = self.model.chat(self.tokenizer, query, history=truncated_history)
+                result = self.model.chat(self.tokenizer, query, history=[])
 
                 if isinstance(result, tuple) and len(result) == 2:
                     response, _ = result
