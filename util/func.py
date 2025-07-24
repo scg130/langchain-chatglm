@@ -44,17 +44,22 @@ def get_memory():
 memory = get_memory()
 
 def get_qa_chain(vectordb):
-    retriever = vectordb.as_retriever(search_kwargs={"k": 3})
+    retriever = vectordb.as_retriever(search_kwargs={"k": 5, "fetch_k": 10, "mmr": True})
+
     llm = ChatGLMLLM()
     prompt_template = """
-    文档内容：
-    {context}
+                        你是一个文档问答助手，请根据以下提供的文档内容，精准回答问题。
 
-    问题：
-    {question}
+                        文档内容（请严格参考）：
+                        {context}
 
-    答案：
-    """
+                        问题：
+                        {question}
+
+                        请基于文档内容作答，如无相关信息，请回答“文档中未找到相关内容”。
+
+                        答案：
+                        """
     prompt = PromptTemplate(
         template=prompt_template,
         input_variables=["context", "question"]

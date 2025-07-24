@@ -150,7 +150,7 @@ class VectorStoreManager:
             splitter = custom_splitter or RecursiveCharacterTextSplitter(
                 chunk_size=chunk_size,
                 chunk_overlap=chunk_overlap,
-                separators=["\n\n", "\n", "。", "！", "？", "；", "…", " ", ""]
+                separators=["\n\n", "\n", "。", "！", "？"]
             )
 
             docs = splitter.split_documents(raw_docs)
