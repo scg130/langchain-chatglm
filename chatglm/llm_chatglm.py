@@ -96,11 +96,10 @@ class ChatGLMLLM(Runnable):
         question = extract_question(query)
         try:
             logger.info(f"调用invoke，query: {query}")
-            logger.info(f"调用invoke，query: {question}")
-
+            
             if self.is_chatglm:
                 truncated_history = self._truncate_history()
-                logger.info(f"调用invoke，history: {truncated_history}")
+                # logger.info(f"调用invoke，history: {truncated_history}")
                 result = self.model.chat(self.tokenizer, query, history=[])
 
                 if isinstance(result, tuple) and len(result) == 2:
@@ -122,7 +121,7 @@ class ChatGLMLLM(Runnable):
                 outputs = self.model.generate(
                     **inputs,
                     max_new_tokens=self.max_new_tokens,
-                    do_sample=False,
+                    do_sample=True,
                     temperature=0.7,
                     top_p=0.95,
                     repetition_penalty=1.1

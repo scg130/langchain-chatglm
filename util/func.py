@@ -43,12 +43,12 @@ def get_memory():
 
 memory = get_memory()
 
-def get_qa_chain(vectordb):
+def get_qa_chain(vectordb,keywords: str = None):
     retriever = vectordb.as_retriever(
                 search_kwargs={
                     "k": 5,
                     "filter": {
-                        "keywords": "复仇"  # 关键词匹配
+                        "keywords": keywords  # 关键词匹配
                     }
                 }
             )

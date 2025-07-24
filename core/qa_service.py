@@ -12,8 +12,8 @@ class QAService:
         """Initialize QA service with proper key detection"""
         try:
             dir_path = "./data"
-            vectordb = initialize_vectordb(dir_path=dir_path)
-            self.qa_chain = get_qa_chain(vectordb)
+            self.vectordb = initialize_vectordb(dir_path=dir_path)
+            self.qa_chain = get_qa_chain(self.vectordb)
             
             # 自动检测输入键
             if hasattr(self.qa_chain, 'input_keys') and self.qa_chain.input_keys:
@@ -29,20 +29,29 @@ class QAService:
             logger.error(f"QA服务初始化失败: {str(e)}")
             raise
 
-    async def ask_question(self, question: str) -> Dict[str, Any]:
-        """处理用户问题，确保使用正确的键"""
+    def _get_chain(self, keywords: str = None) -> Any:
+        """获取问答链，支持关键词过滤"""
         if not self.qa_chain:
             raise RuntimeError("QA服务未初始化")
+        
+        # 如果有关键词，重新获取链
+        if keywords:
+            return get_qa_chain(self.vectordb, keywords=keywords)
+        
+        return self.qa_chain
 
+    async def ask_question(self, question: str) -> Dict[str, Any]:
+        """处理用户问题，确保使用正确的键"""
+        logger.info(f"ask_question: {question}")
         try:
             # 准备符合链期望的输入格式
             inputs = {self.input_key: question}
-            
+            chain = self._get_chain(keywords=question)  # 可以传入关键词过滤
             # 如果链有内存，确保内存系统也能获取到输入
-            if hasattr(self.qa_chain, 'memory') and self.qa_chain.memory:
+            if hasattr(chain, 'memory') and chain.memory:
                 inputs[self.memory_input_key] = question
             
-            result = self.qa_chain.invoke(inputs)
+            result = chain.invoke(inputs)
             
             return {
                 "answer": result.get("result", result.get("answer", str(result))),

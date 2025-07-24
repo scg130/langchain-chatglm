@@ -14,7 +14,7 @@ async def ask(request: AskRequest):
                 status_code=400,
                 detail="问题不能为空"
             )
-         
+
         result = await qa_service.ask_question(request.question)
         return AskResponse(
             answer=result.get("answer", ""),
