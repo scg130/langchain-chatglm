@@ -5,6 +5,7 @@ from config.logger_config import logger
 from requests.exceptions import ChunkedEncodingError
 import torch
 import os
+from util.to_str import to_str_safe
 
 
 class ChatGLMLLM(Runnable):
@@ -101,7 +102,7 @@ class ChatGLMLLM(Runnable):
         if len(query_tokens) > max_query_tokens:
             query_tokens = query_tokens[:max_query_tokens]
             query = self.tokenizer.decode(query_tokens, skip_special_tokens=True)
-        return query
+        return to_str_safe(query)
 
     def invoke(self, query: str, config: Optional[dict] = None, **kwargs) -> str:
         # 类型检查：query 必须是非空字符串
