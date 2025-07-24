@@ -2,6 +2,7 @@ from typing import Any, Optional, List, Tuple
 from transformers import AutoTokenizer, AutoModel, AutoModelForCausalLM
 from langchain_core.runnables import Runnable
 from config.logger_config import logger
+from requests.exceptions import ChunkedEncodingError
 import torch
 
 
@@ -15,29 +16,53 @@ class ChatGLMLLM(Runnable):
         logger.info(f'Using device: {self.device}')
         logger.info(f'Loading model: {self.model_name}')
 
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            self.model_name, trust_remote_code=True, revision=revision
-        )
+        # 设置 Hugging Face 镜像（可选）
+        import os
+        os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"  # 或 export 到系统环境中
 
-        # 判断是否是 ChatGLM
-        self.is_chatglm = "chatglm" in self.model_name.lower()
-
-        if self.is_chatglm:
-            self.model = AutoModel.from_pretrained(
-                self.model_name, trust_remote_code=True, revision=revision
-            )
-        else:
-            self.model = AutoModelForCausalLM.from_pretrained(
-                self.model_name, trust_remote_code=True, revision=revision
+        try:
+            # 加载分词器
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                self.model_name,
+                trust_remote_code=True,
+                revision=revision,
+                resume_download=True  # ✅ 支持断点续传
             )
 
-        if self.device == "cuda":
-            self.model = self.model.half().cuda()
-        else:
-            self.model = self.model.float().cpu()
+            # 判断是否 ChatGLM
+            self.is_chatglm = "chatglm" in self.model_name.lower()
 
-        self.model.eval()
-        self._history: List[Tuple[str, str]] = []
+            # 加载模型
+            if self.is_chatglm:
+                self.model = AutoModel.from_pretrained(
+                    self.model_name,
+                    trust_remote_code=True,
+                    revision=revision,
+                    resume_download=True
+                )
+            else:
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    self.model_name,
+                    trust_remote_code=True,
+                    revision=revision,
+                    resume_download=True
+                )
+
+            # 设置模型到设备
+            if self.device == "cuda":
+                self.model = self.model.half().cuda()
+            else:
+                self.model = self.model.float().cpu()
+
+            self.model.eval()
+            self._history: List[Tuple[str, str]] = []
+
+        except ChunkedEncodingError as e:
+            logger.error(f"模型下载过程中连接中断，请检查网络或尝试手动下载：{e}")
+            raise RuntimeError("模型加载失败，下载不完整。建议使用代理或切换到清华镜像。")
+        except Exception as e:
+            logger.error(f"模型初始化失败：{e}")
+            raise RuntimeError(f"模型初始化失败：{str(e)}")
 
     def invoke(self, query: str, config: Optional[dict] = None, **kwargs) -> str:
         if not query:
