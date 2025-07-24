@@ -44,7 +44,7 @@ def get_memory():
 memory = get_memory()
 
 def get_qa_chain(vectordb):
-    retriever = vectordb.as_retriever(search_kwargs={"k": 5, "mmr": True})
+    retriever = vectordb.as_retriever(search_kwargs={"k": 5})
 
     llm = ChatGLMLLM()
     prompt_template = """
