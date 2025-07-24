@@ -105,9 +105,6 @@ class ChatGLMLLM(Runnable):
         return to_str_safe(query)
 
     def invoke(self, query: str, config: Optional[dict] = None, **kwargs) -> str:
-        if not query.strip():
-            raise ValueError("输入 query 不能为空")
-
         if not isinstance(config, dict):
             config = {}
 
