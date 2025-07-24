@@ -67,6 +67,17 @@ def get_qa_chain(vectordb):
     )
     return qa_chain
 
+def extract_question(text: str) -> str:
+    """
+    从包含'文档内容'和'问题'的文本中提取问题部分
+    """
+    # 匹配“问题：”之后直到“答案：”之前的内容，非贪婪匹配
+    pattern = r"问题：\s*(.*?)\s*(答案：|$)"
+    match = re.search(pattern, text, re.DOTALL)
+    if match:
+        question = match.group(1).strip()
+        return question
+    return ""
 
 # 初始化全局组件
 manager = VectorStoreManager()

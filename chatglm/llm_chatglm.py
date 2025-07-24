@@ -3,6 +3,7 @@ from transformers import AutoTokenizer, AutoModel, AutoModelForCausalLM, AutoCon
 from langchain_core.runnables import Runnable
 from config.logger_config import logger
 from requests.exceptions import ChunkedEncodingError
+from util.func import extract_question
 import torch
 import os
 
@@ -104,7 +105,7 @@ class ChatGLMLLM(Runnable):
                 else:
                     response = result
 
-                self._history.append((query, response))
+                self._history.append((extract_question(query), response))
                 logger.info(f"ChatGLM模型回复: {response}")
                 return response
 
@@ -129,11 +130,12 @@ class ChatGLMLLM(Runnable):
                     skip_special_tokens=True
                 ).strip()
 
-                self._history.append((query, response))
+                self._history.append((extract_question(query), response))
                 logger.info(f"普通模型回复: {response}")
                 return response
 
         except Exception as e:
+            query = extract_question(query)
             logger.error(f"invoke 模型调用失败: {e}, query: {query}", exc_info=True)
             raise RuntimeError(f"处理问题失败: {str(e)}")
 
