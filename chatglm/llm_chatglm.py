@@ -87,11 +87,18 @@ class ChatGLMLLM(Runnable):
             else:
                 # Qwen 等标准模型，拼接 prompt 推理
                 prompt = self._build_prompt(query)
-                inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+                max_input_length = self.model.config.max_position_embeddings - 64
+                inputs = self.tokenizer(
+                    prompt,
+                    return_tensors="pt",
+                    truncation=True,
+                    max_length=max_input_length,
+                ).to(self.device)
+
                 outputs = self.model.generate(
                     **inputs,
-                    max_new_tokens=64,   # 控制生成长度
-                    do_sample=False,     # 关闭采样
+                    max_new_tokens=64,
+                    do_sample=False,
                     temperature=0.7,
                     top_p=0.95,
                     repetition_penalty=1.1
