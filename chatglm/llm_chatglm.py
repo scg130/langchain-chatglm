@@ -104,7 +104,7 @@ class ChatGLMLLM(Runnable):
             else:
                 # Qwen 等标准模型，拼接 prompt 推理
                 prompt = self._build_prompt(query)
-                max_input_length = self.model.config.max_position_embeddings - 64
+                max_input_length = self.model.config.max_position_embeddings - self.max_new_tokens
                 inputs = self.tokenizer(
                     prompt,
                     return_tensors="pt",
@@ -123,7 +123,6 @@ class ChatGLMLLM(Runnable):
                 response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
                 response = response[len(prompt):].strip()
                 self._history.append((query, response))
-                self._history = self._truncate_history(self.tokenizer, self._history, self.max_total_tokens)
                 return response
 
         except Exception as e:
@@ -133,6 +132,8 @@ class ChatGLMLLM(Runnable):
     def _build_prompt(self, query: str) -> str:
         if not self._history:
             return f"用户：{query}\n助手："
+
+        self._history = self._truncate_history(self.tokenizer, self._history, self.max_total_tokens)
         prompt = ""
         for q, a in self._history:
             prompt += f"用户：{q}\n助手：{a}\n"
