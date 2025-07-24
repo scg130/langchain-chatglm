@@ -69,13 +69,6 @@ class ChatGLMLLM(Runnable):
             logger.error(f"模型初始化失败：{e}")
             raise RuntimeError(f"模型初始化失败：{str(e)}")
 
-    def _truncate_query(self, query: str, max_query_tokens: int = 1024) -> str:
-        query_tokens = self.tokenizer(str(query)).input_ids
-        if len(query_tokens) > max_query_tokens:
-            query_tokens = query_tokens[:max_query_tokens]
-            query = self.tokenizer.decode(query_tokens, skip_special_tokens=True)
-        return str(query)
-
     def _truncate_history(self) -> List[Tuple[str, str]]:
         """截断历史对话，保证token数量不超过max_total_tokens"""
         max_len = self.max_total_tokens
@@ -99,7 +92,6 @@ class ChatGLMLLM(Runnable):
 
         query = str(query)
         try:
-            query = self._truncate_query(query, max_query_tokens=1024)
             logger.info(f"调用invoke，query: {query}")
 
             if self.is_chatglm:

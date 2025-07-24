@@ -63,7 +63,7 @@ def get_qa_chain(vectordb):
         retriever=retriever,
         return_source_documents=True,
         chain_type_kwargs={"prompt": prompt},
-        # memory=memory
+        memory=memory
     )
     return qa_chain
 
