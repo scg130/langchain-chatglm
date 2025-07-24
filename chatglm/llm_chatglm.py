@@ -102,35 +102,29 @@ class ChatGLMLLM(Runnable):
         if not isinstance(config, dict):
             config = {}
 
-        reset_history = config.get("reset_history", False)
-        if reset_history:
-            self._history = []
+        # 无论何时调用，都清空历史，或者直接不使用历史
+        self._history = []
 
         query = str(query)
-        self._history = [(str(q), str(a)) for q, a in self._history]
 
         try:
-            self._truncate_history(query, self.max_total_tokens, max_rounds=5)
+            # 不再截断历史，直接只截断当前query
             query = self._truncate_query(query, max_query_tokens=1024)
 
             logger.info(f"调用invoke，query: {query}")
-            logger.info(f"当前历史长度: {len(self._history)}轮")
 
             if self.is_chatglm:
-                result = self.model.chat(self.tokenizer, query, history=self._history)
+                # 传入空的历史
+                result = self.model.chat(self.tokenizer, query, history=[])
                 if isinstance(result, tuple) and len(result) == 2:
-                    response, self._history = result
+                    response, _ = result  # 不保存历史
                 else:
                     response = result
-                    self._history.append((query, response))
                 logger.info(f"ChatGLM模型回复: {response}")
                 return response
 
             else:
-                prompt = ""
-                for q, a in self._history:
-                    prompt += f"用户：{q}\n助手：{a}\n"
-                prompt += f"用户：{query}\n助手："
+                prompt = f"用户：{query}\n助手："
 
                 tokens = self.tokenizer(prompt, truncation=True, max_length=self.max_total_tokens)
                 prompt = self.tokenizer.decode(tokens.input_ids, skip_special_tokens=True)
@@ -148,10 +142,10 @@ class ChatGLMLLM(Runnable):
 
                 response = self.tokenizer.decode(outputs[0][inputs['input_ids'].shape[-1]:], skip_special_tokens=True).strip()
 
-                self._history.append((query, response))
                 logger.info(f"普通模型回复: {response}")
                 return response
 
         except Exception as e:
             logger.error(f"invoke 模型调用失败: {e}, query: {query}", exc_info=True)
             raise RuntimeError(f"处理问题失败: {str(e)}")
+
