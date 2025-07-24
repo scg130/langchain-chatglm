@@ -46,10 +46,7 @@ def get_qa_chain(vectordb):
     retriever = vectordb.as_retriever(search_kwargs={"k": 3})
     llm = ChatGLMLLM()
     prompt_template = """
-    上下文内容：
-    {context}
-
-    问题：
+    请回答以下问题：
     {question}
 
     答案：
