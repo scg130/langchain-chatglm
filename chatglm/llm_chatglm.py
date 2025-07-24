@@ -69,35 +69,6 @@ class ChatGLMLLM(Runnable):
             logger.error(f"模型初始化失败：{e}")
             raise RuntimeError(f"模型初始化失败：{str(e)}")
 
-    def _truncate_history(self, query: str, max_total_tokens: int, max_rounds: int = 5):
-        """
-        截断历史，保证历史token总长度 + query token数 <= max_total_tokens
-        """
-        query_tokens_len = len(self.tokenizer(str(query)).input_ids)
-        allowed_tokens_for_history = max_total_tokens - query_tokens_len
-        total_tokens = 0
-        new_history = []
-
-        for q, a in reversed(self._history):
-            q_len = len(self.tokenizer(q).input_ids)
-            a_len = len(self.tokenizer(a).input_ids)
-            if total_tokens + q_len + a_len > allowed_tokens_for_history:
-                break
-            new_history.insert(0, (q, a))
-            total_tokens += q_len + a_len
-            if len(new_history) >= max_rounds:
-                break
-
-        self._history = new_history
-        logger.debug(f"截断后历史轮次: {len(self._history)}, 历史tokens: {total_tokens}, 预留query tokens: {query_tokens_len}")
-
-    def _truncate_query(self, query: str, max_query_tokens: int = 1024) -> str:
-        query_tokens = self.tokenizer(str(query)).input_ids
-        if len(query_tokens) > max_query_tokens:
-            query_tokens = query_tokens[:max_query_tokens]
-            query = self.tokenizer.decode(query_tokens, skip_special_tokens=True)
-        return str(query)
-
     def invoke(self, query: str, config: Optional[dict] = None, **kwargs) -> str:
         if not isinstance(config, dict):
             config = {}
