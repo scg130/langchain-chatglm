@@ -4,31 +4,33 @@ from langchain_core.runnables import Runnable
 from config.logger_config import logger
 from requests.exceptions import ChunkedEncodingError
 import torch
+import os
 
 
 class ChatGLMLLM(Runnable):
-    def __init__(self, 
-                 model_name_cuda="THUDM/chatglm2-6b", 
-                 model_name_cpu="Qwen/Qwen1.5-0.5B", 
-                 revision="main"):
+    def __init__(self,
+                 model_name_cuda="THUDM/chatglm2-6b",
+                 model_name_cpu="Qwen/Qwen1.5-0.5B",
+                 revision="main",
+                 max_new_tokens=64):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model_name = model_name_cuda if self.device == "cuda" else model_name_cpu
-        # 自动加载 config 获取 max_length
-        config = AutoConfig.from_pretrained(self.model_name, revision=revision, trust_remote_code=True)
-
-        # 获取模型最大长度（不同模型字段可能不同，需容错处理）
-        model_max_length = getattr(config, "max_position_embeddings", 
-                              getattr(config, "seq_length", 
-                              getattr(config, "n_positions", 
-                              getattr(config, "model_max_length", 2048))))  # 最后兜底2048
-        self.max_new_tokens = 64
-        self.max_total_tokens = model_max_length - self.max_new_tokens
-        logger.info(f'Using device: {self.device}')
-        logger.info(f'Loading model: {self.model_name}')
 
         # 设置 Hugging Face 镜像（可选）
-        import os
         os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"  # 或 export 到系统环境中
+
+        # 自动加载 config 获取 max_length
+        config = AutoConfig.from_pretrained(self.model_name, revision=revision, trust_remote_code=True)
+        model_max_length = getattr(config, "max_position_embeddings",
+                                   getattr(config, "seq_length",
+                                           getattr(config, "n_positions",
+                                                   getattr(config, "model_max_length", 2048))))
+        self.max_new_tokens = max_new_tokens
+        self.max_total_tokens = model_max_length - self.max_new_tokens
+
+        logger.info(f'Using device: {self.device}')
+        logger.info(f'Loading model: {self.model_name}')
+        logger.info(f'Model max length: {model_max_length}, max_new_tokens: {self.max_new_tokens}, max_total_tokens: {self.max_total_tokens}')
 
         try:
             # 加载分词器
@@ -36,7 +38,7 @@ class ChatGLMLLM(Runnable):
                 self.model_name,
                 trust_remote_code=True,
                 revision=revision,
-                resume_download=True  # ✅ 支持断点续传
+                resume_download=True
             )
 
             # 判断是否 ChatGLM
@@ -74,34 +76,50 @@ class ChatGLMLLM(Runnable):
             logger.error(f"模型初始化失败：{e}")
             raise RuntimeError(f"模型初始化失败：{str(e)}")
 
-    def _truncate_history(self, tokenizer, history, max_tokens):
+    def _truncate_history(self, tokenizer, history, max_tokens, max_rounds=5):
         total_tokens = 0
         new_history = []
-        
-        # 从后往前保留最近对话
+        rounds = 0
+
+        # 从后往前保留历史轮次，优先完整问答对
         for q, a in reversed(history):
-            text = q + a
-            token_len = len(tokenizer(text).input_ids)
-            if total_tokens + token_len > max_tokens:
+            if rounds >= max_rounds:
+                break
+            q_tokens = len(tokenizer(q).input_ids)
+            a_tokens = len(tokenizer(a).input_ids)
+            if total_tokens + q_tokens + a_tokens > max_tokens:
                 break
             new_history.insert(0, (q, a))
-            total_tokens += token_len
+            total_tokens += q_tokens + a_tokens
+            rounds += 1
         return new_history
 
+    def _build_prompt(self, query: str) -> str:
+        if not self._history:
+            return f"用户：{query}\n助手："
+
+        self._history = self._truncate_history(self.tokenizer, self._history, self.max_total_tokens, max_rounds=5)
+        prompt = ""
+        for q, a in self._history:
+            prompt += f"用户：{q}\n助手：{a}\n"
+        prompt += f"用户：{query}\n助手："
+        return prompt
 
     def invoke(self, query: str, config: Optional[dict] = None, **kwargs) -> str:
         if not query:
             raise ValueError("输入 query 不能为空")
 
-        reset_history = config.get("reset_history", False) if config else False
+        if not isinstance(config, dict):
+            config = {}
+
+        reset_history = config.get("reset_history", False)
         if reset_history:
             self._history = []
 
         try:
             if self.is_chatglm:
-                # 使用 chatglm 原生接口
+                # ChatGLM 原生接口，历史处理内置，无需额外截断
                 result = self.model.chat(self.tokenizer, query, history=self._history)
-
                 if isinstance(result, tuple) and len(result) == 2:
                     response, self._history = result
                 else:
@@ -110,20 +128,18 @@ class ChatGLMLLM(Runnable):
                 return response
 
             else:
-                # Qwen 等标准模型，拼接 prompt 推理
+                # 标准模型，先截断历史，限制最大长度
+                max_input_length = self.max_total_tokens
+                self._history = self._truncate_history(self.tokenizer, self._history, max_input_length, max_rounds=5)
+
                 prompt = self._build_prompt(query)
 
-                # 先明确输入最大长度
-                max_input_length = self.max_total_tokens
-
-                # 截断 prompt
+                # 自动截断超长输入
                 tokens = self.tokenizer(prompt, truncation=True, max_length=max_input_length)
                 prompt = self.tokenizer.decode(tokens.input_ids, skip_special_tokens=True)
 
-                # 重新编码为输入张量
                 inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
 
-                # 推理生成
                 outputs = self.model.generate(
                     **inputs,
                     max_new_tokens=self.max_new_tokens,
@@ -132,22 +148,13 @@ class ChatGLMLLM(Runnable):
                     top_p=0.95,
                     repetition_penalty=1.1
                 )
-                response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-                response = response[len(prompt):].strip()
+
+                # 精确切割生成文本，排除prompt部分
+                response = self.tokenizer.decode(outputs[0][inputs['input_ids'].shape[-1]:], skip_special_tokens=True).strip()
+
                 self._history.append((query, response))
                 return response
 
         except Exception as e:
-            logger.error(f"invoke 模型调用失败: {e}", exc_info=True)
+            logger.error(f"invoke 模型调用失败: {e}, query: {query}", exc_info=True)
             raise RuntimeError(f"处理问题失败: {str(e)}")
-
-    def _build_prompt(self, query: str) -> str:
-        if not self._history:
-            return f"用户：{query}\n助手："
-
-        self._history = self._truncate_history(self.tokenizer, self._history, self.max_total_tokens)
-        prompt = ""
-        for q, a in self._history:
-            prompt += f"用户：{q}\n助手：{a}\n"
-        prompt += f"用户：{query}\n助手："
-        return prompt
