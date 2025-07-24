@@ -42,6 +42,7 @@ def get_memory():
     return memory
 
 memory = get_memory()
+llm = ChatGLMLLM()
 
 def get_qa_chain(vectordb,keywords: str = None):
     retriever = vectordb.as_retriever(
@@ -53,7 +54,7 @@ def get_qa_chain(vectordb,keywords: str = None):
                 }
             )
 
-    llm = ChatGLMLLM()
+    
     prompt_template = """
                         你是一个文档问答助手，请根据以下提供的文档内容，精准回答问题。
 
