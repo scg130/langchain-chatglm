@@ -98,7 +98,7 @@ class ChatGLMLLM(Runnable):
         self._history = new_history
 
     def _truncate_query(self, query: str, max_query_tokens: int = 1024) -> str:
-        query_tokens = self.tokenizer(query).input_ids
+        query_tokens = self.tokenizer(str(query)).input_ids
         if len(query_tokens) > max_query_tokens:
             query_tokens = query_tokens[:max_query_tokens]
             query = self.tokenizer.decode(query_tokens, skip_special_tokens=True)
