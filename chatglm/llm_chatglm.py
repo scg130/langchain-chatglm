@@ -1,5 +1,5 @@
 from typing import Any, Optional, List, Tuple
-from transformers import AutoTokenizer, AutoModel, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModel, AutoModelForCausalLM, AutoConfig
 from langchain_core.runnables import Runnable
 from config.logger_config import logger
 from requests.exceptions import ChunkedEncodingError
