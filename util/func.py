@@ -56,18 +56,14 @@ def get_qa_chain(vectordb,keywords: str = None):
 
     
     prompt_template = """
-                        你是一个文档问答助手，请根据以下提供的文档内容，精准回答问题。
+        文档内容（请严格参考）：
+        {context}
 
-                        文档内容（请严格参考）：
-                        {context}
+        问题：
+        {question}
 
-                        问题：
-                        {question}
-
-                        请基于文档内容作答，如无相关信息，请回答“文档中未找到相关内容”。
-
-                        答案：
-                        """
+        答案：
+        """
     prompt = PromptTemplate(
         template=prompt_template,
         input_variables=["context", "question"]
