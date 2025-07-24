@@ -53,7 +53,7 @@ def get_qa_chain(vectordb):
     """
     prompt = PromptTemplate(
         template=prompt_template,
-        input_variables=["context", "question"]
+        input_variables=["question"]
     )
     qa_chain = RetrievalQA.from_chain_type(
         llm=llm,
