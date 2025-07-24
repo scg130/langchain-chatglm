@@ -32,7 +32,7 @@ def get_memory():
         # CPU-only，使用内存存储历史
         print("⚠️ 未检测到 GPU，使用本地内存存储对话历史")
         memory = ConversationBufferWindowMemory(
-            k=2,
+            k=20,
             memory_key="chat_history",
             return_messages=True,
             output_key="result",
@@ -46,14 +46,17 @@ def get_qa_chain(vectordb):
     retriever = vectordb.as_retriever(search_kwargs={"k": 3})
     llm = ChatGLMLLM()
     prompt_template = """
-    请回答以下问题：
+    文档内容：
+    {context}
+
+    问题：
     {question}
 
     答案：
     """
     prompt = PromptTemplate(
         template=prompt_template,
-        input_variables=["question"]
+        input_variables=["context", "question"]
     )
     qa_chain = RetrievalQA.from_chain_type(
         llm=llm,
