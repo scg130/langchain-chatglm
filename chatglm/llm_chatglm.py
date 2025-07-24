@@ -13,6 +13,7 @@ class ChatGLMLLM(Runnable):
                  revision="main"):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model_name = model_name_cuda if self.device == "cuda" else model_name_cpu
+        self.MAX_HISTORY_ROUNDS = 3
         logger.info(f'Using device: {self.device}')
         logger.info(f'Loading model: {self.model_name}')
 
@@ -106,6 +107,9 @@ class ChatGLMLLM(Runnable):
                 response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
                 response = response[len(prompt):].strip()
                 self._history.append((query, response))
+
+                if len(self._history) > MAX_HISTORY_ROUNDS:
+                    self._history = self._history[-MAX_HISTORY_ROUNDS:]
                 return response
 
         except Exception as e:
