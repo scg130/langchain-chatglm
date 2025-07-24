@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 from core.qa_service import qa_service
 from config.logger_config import logger
 from ..schemas.qa_dto import AskRequest, AskResponse
+from util.to_str import to_str_safe
 
 router = APIRouter(prefix="/api/v1", tags=["QA"])
 
@@ -14,7 +15,7 @@ async def ask(request: AskRequest):
                 detail="问题不能为空"
             )
             
-        result = await qa_service.ask_question(request.question.to_string())
+        result = await qa_service.ask_question(to_str_safe(request.question))
         return AskResponse(
             answer=result.get("answer", ""),
             sources=result.get("sources", [])
