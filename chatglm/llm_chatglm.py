@@ -3,7 +3,7 @@ from transformers import AutoTokenizer, AutoModel, AutoModelForCausalLM, AutoCon
 from langchain_core.runnables import Runnable
 from config.logger_config import logger
 from requests.exceptions import ChunkedEncodingError
-from util.func import extract_question
+
 import torch
 import os
 
@@ -88,6 +88,7 @@ class ChatGLMLLM(Runnable):
         return truncated_history
 
     def invoke(self, query: str, config: Optional[dict] = None, **kwargs) -> str:
+        from util.func import extract_question
         if not isinstance(config, dict):
             config = {}
 
