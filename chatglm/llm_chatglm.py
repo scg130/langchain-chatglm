@@ -13,8 +13,16 @@ class ChatGLMLLM(Runnable):
                  revision="main"):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model_name = model_name_cuda if self.device == "cuda" else model_name_cpu
+        # 自动加载 config 获取 max_length
+        config = AutoConfig.from_pretrained(self.model_name, revision=revision, trust_remote_code=True)
+
+        # 获取模型最大长度（不同模型字段可能不同，需容错处理）
+        model_max_length = getattr(config, "max_position_embeddings", 
+                              getattr(config, "seq_length", 
+                              getattr(config, "n_positions", 
+                              getattr(config, "model_max_length", 2048))))  # 最后兜底2048
         self.max_new_tokens = 64
-        self.max_total_tokens = 8192 - self.max_new_tokens  # 为生成留出 64 个 token 空间
+        self.max_total_tokens = model_max_length - self.max_new_tokens
         logger.info(f'Using device: {self.device}')
         logger.info(f'Loading model: {self.model_name}')
 
