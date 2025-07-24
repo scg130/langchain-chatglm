@@ -1,5 +1,5 @@
-from typing import Any
 from langchain_core.prompt_values import StringPromptValue
+from typing import Any
 
 def to_str_safe(obj: Any) -> str:
     if isinstance(obj, str):
