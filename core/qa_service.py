@@ -29,25 +29,13 @@ class QAService:
             logger.error(f"QA服务初始化失败: {str(e)}")
             raise
 
-    def _get_chain(self, keywords: str = None) -> Any:
-        """获取问答链，支持关键词过滤"""
-        if not self.qa_chain:
-            raise RuntimeError("QA服务未初始化")
-        
-        # 如果有关键词，重新获取链
-        if keywords:
-            return get_qa_chain(self.vectordb, keywords=keywords)
-        
-        return self.qa_chain
-
     async def ask_question(self, question: str) -> Dict[str, Any]:
         """处理用户问题，确保使用正确的键"""
         logger.info(f"ask_question: {question}")
         try:
             # 准备符合链期望的输入格式
             inputs = {self.input_key: question}
-            chain = self._get_chain(keywords=question)  # 可以传入关键词过滤
-            # chain = self.qa_chain  # 使用初始化时的链
+            chain = self.qa_chain  # 使用初始化时的链
             # 如果链有内存，确保内存系统也能获取到输入
             if hasattr(chain, 'memory') and chain.memory:
                 inputs[self.memory_input_key] = question

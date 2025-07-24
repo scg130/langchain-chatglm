@@ -44,19 +44,8 @@ def get_memory():
 memory = get_memory()
 llm = ChatGLMLLM()
 
-def get_qa_chain(vectordb,keywords: str = None):
-    if keywords is None:
-        retriever = vectordb.as_retriever(search_kwargs={'k': 5})
-    else:
-        retriever = vectordb.as_retriever(
-                search_kwargs={
-                    "k": 5,
-                    "filter": {
-                        "keywords": keywords  # 关键词匹配
-                    }
-                }
-            )    
-
+def get_qa_chain(vectordb):
+    retriever = vectordb.as_retriever(search_kwargs={'k': 5})
     
     prompt_template = """
         文档内容（请严格参考）：
