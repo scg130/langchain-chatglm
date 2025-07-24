@@ -13,7 +13,8 @@ class ChatGLMLLM(Runnable):
                  revision="main"):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model_name = model_name_cuda if self.device == "cuda" else model_name_cpu
-        self.MAX_HISTORY_ROUNDS = 3
+        self.max_new_tokens = 64
+        self.max_total_tokens = 8192 - self.max_new_tokens  # 为生成留出 64 个 token 空间
         logger.info(f'Using device: {self.device}')
         logger.info(f'Loading model: {self.model_name}')
 
@@ -65,6 +66,21 @@ class ChatGLMLLM(Runnable):
             logger.error(f"模型初始化失败：{e}")
             raise RuntimeError(f"模型初始化失败：{str(e)}")
 
+    def truncate_history(tokenizer, history, max_tokens):
+        total_tokens = 0
+        new_history = []
+        
+        # 从后往前保留最近对话
+        for q, a in reversed(history):
+            text = q + a
+            token_len = len(tokenizer(text).input_ids)
+            if total_tokens + token_len > max_tokens:
+                break
+            new_history.insert(0, (q, a))
+            total_tokens += token_len
+        return new_history
+
+
     def invoke(self, query: str, config: Optional[dict] = None, **kwargs) -> str:
         if not query:
             raise ValueError("输入 query 不能为空")
@@ -98,7 +114,7 @@ class ChatGLMLLM(Runnable):
 
                 outputs = self.model.generate(
                     **inputs,
-                    max_new_tokens=64,
+                    max_new_tokens=self.max_new_tokens,
                     do_sample=False,
                     temperature=0.7,
                     top_p=0.95,
@@ -107,9 +123,7 @@ class ChatGLMLLM(Runnable):
                 response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
                 response = response[len(prompt):].strip()
                 self._history.append((query, response))
-
-                if len(self._history) > MAX_HISTORY_ROUNDS:
-                    self._history = self._history[-MAX_HISTORY_ROUNDS:]
+                self._history = truncate_history(self.tokenizer, self._history, self.max_total_tokens)
                 return response
 
         except Exception as e:
