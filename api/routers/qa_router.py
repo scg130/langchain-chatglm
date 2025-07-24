@@ -14,12 +14,8 @@ async def ask(request: AskRequest):
                 status_code=400,
                 detail="问题不能为空"
             )
-            
-        # 确保question是字符串类型
-        question_str = request.question
-        if hasattr(question_str, 'to_string') and callable(question_str.to_string):
-            question_str = question_str.to_string()
-        result = await qa_service.ask_question(str(question_str))
+         
+        result = await qa_service.ask_question(request.question)
         return AskResponse(
             answer=result.get("answer", ""),
             sources=result.get("sources", [])

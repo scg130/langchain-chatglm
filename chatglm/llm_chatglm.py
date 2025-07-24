@@ -119,8 +119,8 @@ class ChatGLMLLM(Runnable):
             # 统一截断历史，防止上下文过长
             self._truncate_history_unified(self.max_total_tokens, max_rounds=5)
 
-            # 统一截断 query，避免单条过长
-            query = self._truncate_query(query, max_query_tokens=1024)
+            # # 统一截断 query，避免单条过长
+            # query = self._truncate_query(query, max_query_tokens=1024)
 
             if self.is_chatglm:
                 result = self.model.chat(self.tokenizer, query, history=self._history)
