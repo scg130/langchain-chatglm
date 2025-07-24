@@ -66,7 +66,7 @@ class ChatGLMLLM(Runnable):
             logger.error(f"模型初始化失败：{e}")
             raise RuntimeError(f"模型初始化失败：{str(e)}")
 
-    def _truncate_history(tokenizer, history, max_tokens):
+    def _truncate_history(self, tokenizer, history, max_tokens):
         total_tokens = 0
         new_history = []
         
