@@ -7,6 +7,7 @@ from langchain_community.chat_message_histories import RedisChatMessageHistory
 from chatglm.llm_chatglm import ChatGLMLLM
 from chroma.chroma_db import VectorStoreManager
 from config.logger_config import logger
+import re
 
 import torch
 
