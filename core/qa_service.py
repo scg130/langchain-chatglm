@@ -13,25 +13,25 @@ class QAService:
         """Initialize QA service with proper key detection"""
         try:
             dir_path = "./data"
-            self.vectordb = initialize_vectordb(dir_path=dir_path)
-            self.qa_chain = get_qa_chain(self.vectordb)
-            
-            # 预构建三种retriever
+            self.vectordbs = initialize_vectordb(dir_path=dir_path)
+
             self.retrievers = {
-                "full_text": self.vectordb.as_retriever(search_kwargs={
+                index_type: self.vectordbs[index_type].as_retriever(search_kwargs={
                     'k': 3,
-                    'filter': {'index_type': {'$in': ['full_text']}}
-                }),
-                "section": self.vectordb.as_retriever(search_kwargs={
-                    'k': 3,
-                    'filter': {'index_type': {'$in': ['section']}}
-                }),
-                "detail": self.vectordb.as_retriever(search_kwargs={
-                    'k': 3,
-                    'filter': {'index_type': {'$in': ['detail']}}
+                    'filter': {'index_type': {'$in': [index_type]}}
                 })
+                for index_type in ["full_text", "section", "detail"]
             }
+
+            # 你也可以选择其中一个默认的vectorstore用于初始化qa_chain，例如 full_text
+            self.qa_chain = get_qa_chain(self.vectordbs["full_text"])
             
+            self.qa_chains = {
+                "full_text": get_qa_chain(self.vectordbs["full_text"]),
+                "section": get_qa_chain(self.vectordbs["section"]),
+                "detail": get_qa_chain(self.vectordbs["detail"]),
+            }
+
             # 自动检测输入键
             if hasattr(self.qa_chain, 'input_keys') and self.qa_chain.input_keys:
                 self.input_key = self.qa_chain.input_keys[0]
@@ -98,32 +98,10 @@ class QAService:
             index_type = await self._determine_index_type(question)
             logger.info(f"Determined index type: {index_type}")
             
-            # 使用预构建的retriever查询
-            full_text_docs, section_docs, detail_docs = await asyncio.gather(
-                self.async_get_docs(self.retrievers["full_text"], question),
-                self.async_get_docs(self.retrievers["section"], question),
-                self.async_get_docs(self.retrievers["detail"], question),
-            )
-            
-            # 根据路由结果选择主要文档
-            main_docs = []
-            if index_type == "full_text":
-                main_docs = full_text_docs
-            elif index_type == "section":
-                main_docs = section_docs
-            else:
-                main_docs = detail_docs
-                
-            # 合并其他相关文档
-            all_docs = await self.deduplicate_documents(main_docs + full_text_docs + section_docs + detail_docs)
+            chain = self.qa_chains[index_type]
+            docs = await self.async_get_docs(self.retrievers[index_type], question)
+            unique_docs = await self.deduplicate_documents(docs)
 
-            unique_docs = []
-            seen_hashes = set()
-            for doc in all_docs:
-                if doc.metadata["content_hash"] not in seen_hashes:
-                    unique_docs.append(doc)
-                    seen_hashes.add(doc.metadata["content_hash"])
-            
             # 准备上下文
             context = "\n\n".join([
                 f"文档来源: {doc.metadata['original_source']}\n"
@@ -137,7 +115,6 @@ class QAService:
             
             # 调用LLM
             inputs = {self.input_key: full_query}
-            chain = self.qa_chain
             if hasattr(chain, 'memory') and chain.memory:
                 inputs[self.memory_input_key] = full_query
                 

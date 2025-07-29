@@ -68,27 +68,27 @@ class VectorStoreManager:
         )
         self.logger = logging.getLogger(__name__)
 
-    def _get_collection_name(self, dir_path: str) -> str:
-        """生成合法的集合名称"""
-        normalized = os.path.normpath(dir_path).replace(os.sep, "_")
-        return f"col_{hashlib.md5(normalized.encode()).hexdigest()[:8]}"
+    def _get_collection_name(self, dir_path: str, index_type: str = "section") -> str:
+        """根据目录路径和索引类型生成唯一的 collection 名"""
+        dir_hash = hashlib.md5(dir_path.encode()).hexdigest()[:8]
+        return f"{index_type}_collection_{dir_hash}"
 
-    def get_vectorstore(self, dir_path: str) -> Chroma:
-        """获取或创建目录对应的向量库"""
+    def get_vectorstore(self, dir_path: str, index_type: str = "section") -> Chroma:
+        """获取或创建目录对应的向量库（支持按 index_type 区分）"""
         try:
-            if dir_path not in self.vectordbs:
-                collection_name = self._get_collection_name(dir_path)
-                self.vectordbs[dir_path] = Chroma(
+            key = f"{dir_path}_{index_type}"
+            if key not in self.vectordbs:
+                collection_name = self._get_collection_name(dir_path, index_type)
+                self.vectordbs[key] = Chroma(
                     collection_name=collection_name,
                     embedding_function=self.embedding,
                     client=self._client,
                     persist_directory=self.persist_dir
                 )
-                self.logger.info(
-                    f"Created new collection for path: {dir_path}")
-            return self.vectordbs[dir_path]
+                self.logger.info(f"✅ 创建新向量库: {collection_name}")
+            return self.vectordbs[key]
         except Exception as e:
-            self.logger.error(f"Failed to get vectorstore: {str(e)}")
+            self.logger.error(f"❌ 获取向量库失败: {str(e)}")
             raise
 
     def _get_loader(self, file_path: str):
@@ -178,7 +178,8 @@ class VectorStoreManager:
         file_pattern: str = "**/*",
         batch_size: int = 1000,
         force_reload: bool = False,
-        show_progress: bool = True
+        show_progress: bool = True,
+        index_type: str = "section"
     ) -> Dict[str, int]:
         """
         加载整个目录到向量库
@@ -191,7 +192,7 @@ class VectorStoreManager:
                 "failed": 失败文档数
             }
         """
-        vectordb = self.get_vectorstore(dir_path)
+        vectordb = self.get_vectorstore(dir_path, index_type)
 
         # 增量加载检查
         if not force_reload and vectordb._collection.count() > 0:
@@ -210,7 +211,8 @@ class VectorStoreManager:
         docs = self.load_documents(
             dir_path,
             file_pattern=file_pattern,
-            show_progress=show_progress
+            show_progress=show_progress,
+            index_type=index_type
         )
 
         # 添加文档
@@ -218,7 +220,8 @@ class VectorStoreManager:
             dir_path,
             docs,
             batch_size=batch_size,
-            show_progress=show_progress
+            show_progress=show_progress,
+            index_type=index_type
         )
 
     def add_documents(
@@ -226,7 +229,8 @@ class VectorStoreManager:
         dir_path: str,
         new_docs: List[Document],
         batch_size: int = 1000,
-        show_progress: bool = True
+        show_progress: bool = True,
+        index_type: str = "section"
     ) -> Dict[str, int]:
         """添加文档到指定路径的集合"""
         stats = {
@@ -240,7 +244,7 @@ class VectorStoreManager:
             self.logger.warning("No documents to add")
             return stats
 
-        vectordb = self.get_vectorstore(dir_path)
+        vectordb = self.get_vectorstore(dir_path, index_type)
         existing_hashes = self._get_existing_hashes(vectordb)
 
         # 过滤重复文档
@@ -296,7 +300,7 @@ class VectorStoreManager:
             filter_metadata: 过滤条件
             index_type: 索引类型筛选 (None表示全部, full_text/section/detail)
         """
-        vectordb = self.get_vectorstore(dir_path)
+        vectordb = self.get_vectorstore(dir_path, index_type)
         
         # 构建过滤条件
         final_filter = filter_metadata or {}
@@ -310,12 +314,12 @@ class VectorStoreManager:
             **kwargs
         )
 
-    def delete_collection(self, dir_path: str) -> bool:
+    def delete_collection(self, dir_path: str, index_type: str = "section") -> bool:
         """删除指定路径的集合"""
         try:
-            vectordb = self.get_vectorstore(dir_path)
+            vectordb = self.get_vectorstore(dir_path, index_type)
             self._client.delete_collection(vectordb._collection.name)
-            self.vectordbs.pop(dir_path, None)
+            self.vectordbs.pop(f"{dir_path}_{index_type}", None)
             self.logger.info(f"Deleted collection for path: {dir_path}")
             return True
         except Exception as e:
@@ -338,7 +342,7 @@ class VectorStoreManager:
 
     def optimize(self, dir_path: str):
         """优化指定集合的存储"""
-        vectordb = self.get_vectorstore(dir_path)
+        vectordb = self.get_vectorstore(dir_path, index_type)
         vectordb.persist()
         self.logger.info(f"Optimized collection: {dir_path}")
 

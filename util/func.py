@@ -7,6 +7,7 @@ from langchain_community.chat_message_histories import RedisChatMessageHistory
 from chatglm.llm_chatglm import ChatGLMLLM
 from chroma.chroma_db import VectorStoreManager
 from config.logger_config import logger
+from typing import Dict, Any
 import re
 
 import torch
@@ -85,20 +86,40 @@ def extract_question(text: str) -> str:
 manager = VectorStoreManager()
 
 
-def initialize_vectordb(dir_path: str):
-    """初始化向量数据库"""
+def initialize_vectordb(dir_path: str) -> Dict[str, Any]:
+    """初始化三种向量数据库：全文 / 章节 / 细节"""
     try:
-        logger.info("⏳ 正在加载文档到向量数据库...")
-        docs = manager.load_documents(
-            input_path=dir_path,
-            file_pattern="**/*",
-            chunk_size=1000,
-            chunk_overlap=100
-        )
-        result = manager.add_documents(
-            dir_path=dir_path, new_docs=docs, batch_size=2000)
-        logger.info(f"✅ 文档加载完成. 成功率: {result['added']/result['total']:.1%}")
-        return manager.get_vectorstore(dir_path=dir_path)
+        logger.info("⏳ 正在加载文档到多个向量数据库...")
+
+        # 定义三种切分策略
+        strategies = {
+            "full_text": {"chunk_size": 2000, "chunk_overlap": 200},
+            "section": {"chunk_size": 1000, "chunk_overlap": 100},
+            "detail": {"chunk_size": 300, "chunk_overlap": 50}
+        }
+
+        vectordbs = {}
+
+        for index_type, params in strategies.items():
+            logger.info(f"📄 开始加载 {index_type} 索引...")
+            docs = manager.load_documents(
+                input_path=dir_path,
+                file_pattern="**/*",
+                chunk_size=params["chunk_size"],
+                chunk_overlap=params["chunk_overlap"],
+                index_type=index_type
+            )
+            result = manager.add_documents(
+                dir_path=dir_path, new_docs=docs, index_type=index_type, batch_size=2000
+            )
+            logger.info(f"✅ {index_type} 加载完成. 成功率: {result['added']/result['total']:.1%}")
+
+            vectordb = manager.get_vectorstore(dir_path=dir_path, index_type=index_type)
+            vectordbs[index_type] = vectordb
+
+        return vectordbs
+
     except Exception as e:
-        logger.error(f"❌ 文档加载失败: {str(e)}")
+        logger.error(f"❌ 向量数据库加载失败: {str(e)}")
         raise
+
