@@ -7,7 +7,7 @@ import os
 def setup_logger(log_dir='logs'):
     """配置并返回全局logger（每小时一个文件，保留24小时）"""
     logger = logging.getLogger("app")
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging.WARN)
     
     formatter = logging.Formatter(
         '%(asctime)s - %(name)s - %(levelname)s - %(message)s'

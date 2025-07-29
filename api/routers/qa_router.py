@@ -3,6 +3,7 @@ from core.qa_service import qa_service
 from config.logger_config import logger
 from ..schemas.qa_dto import AskRequest, AskResponse
 from util.to_str import to_str_safe
+from typing import List
 
 router = APIRouter(prefix="/api/v1", tags=["QA"])
 
@@ -18,7 +19,8 @@ async def ask(request: AskRequest):
         result = await qa_service.ask_question(request.question)
         return AskResponse(
             answer=result.get("answer", ""),
-            sources=result.get("sources", [])
+            sources=result.get("sources", []),
+            index_type=result.get("index_type", "full_text")
         )
         
     except HTTPException:

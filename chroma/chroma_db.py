@@ -108,7 +108,8 @@ class VectorStoreManager:
         chunk_size: Optional[int] = None,
         chunk_overlap: Optional[int] = None,
         custom_splitter: Optional[TextSplitter] = None,
-        show_progress: bool = True
+        show_progress: bool = True,
+        index_type: str = "full_text"  # full_text/section/detail
     ) -> List[Document]:
         """
         加载并分块处理文档
@@ -120,6 +121,7 @@ class VectorStoreManager:
             chunk_overlap: 分块重叠大小
             custom_splitter: 自定义文本分割器
             show_progress: 是否显示进度条
+            index_type: 索引类型 (full_text:全文索引, section:章节索引, detail:详细索引)
         """
         try:
             # 参数处理
@@ -160,7 +162,8 @@ class VectorStoreManager:
                 doc.metadata.update({
                     "content_hash": hashlib.md5(doc.page_content.encode("utf-8")).hexdigest(),
                     "chunk_size": len(doc.page_content),
-                    "original_source": doc.metadata.get("source", "")
+                    "original_source": doc.metadata.get("source", ""),
+                    "index_type": index_type
                 })
 
             return docs
@@ -281,14 +284,29 @@ class VectorStoreManager:
         query_text: str,
         k: int = 5,
         filter_metadata: Optional[Dict] = None,
+        index_type: Optional[str] = None,
         **kwargs
     ) -> List[Document]:
-        """查询指定目录的集合"""
+        """查询指定目录的集合
+        
+        参数:
+            dir_path: 文档目录路径
+            query_text: 查询文本
+            k: 返回结果数量
+            filter_metadata: 过滤条件
+            index_type: 索引类型筛选 (None表示全部, full_text/section/detail)
+        """
         vectordb = self.get_vectorstore(dir_path)
+        
+        # 构建过滤条件
+        final_filter = filter_metadata or {}
+        if index_type:
+            final_filter.update({"index_type": index_type})
+            
         return vectordb.similarity_search(
             query=query_text,
             k=k,
-            filter=filter_metadata,
+            filter=final_filter,
             **kwargs
         )
 
