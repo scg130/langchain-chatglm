@@ -24,7 +24,7 @@ class QAService:
             }
 
             # 你也可以选择其中一个默认的vectorstore用于初始化qa_chain，例如 full_text
-            self.qa_chain = get_qa_chain(self.vectordbs["full_text"])
+            self.qa_chain = get_qa_chain()
             
             self.qa_chains = {
                 "full_text": get_qa_chain(self.vectordbs["full_text"]),
