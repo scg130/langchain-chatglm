@@ -45,7 +45,7 @@ def get_memory():
 memory = get_memory()
 llm = ChatGLMLLM()
 
-def get_qa_chain(vectordb=None):
+def get_qa_chain(vectordb):
     prompt_template = """
         文档内容（请严格参考）：
         {context}
@@ -67,11 +67,8 @@ def get_qa_chain(vectordb=None):
         "chain_type_kwargs": {"prompt": prompt}
     }
 
-    if vectordb is not None:
-        kwargs["retriever"] = vectordb.as_retriever(search_kwargs={"k": 5})
-        return RetrievalQA.from_chain_type(**kwargs)
-
-    return llm
+    kwargs["retriever"] = vectordb.as_retriever(search_kwargs={"k": 5})
+    return RetrievalQA.from_chain_type(**kwargs)
 
 def extract_question(text: str) -> str:
     """

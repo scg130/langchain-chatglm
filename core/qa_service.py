@@ -1,5 +1,5 @@
 from config.logger_config import logger
-from util.func import get_qa_chain, initialize_vectordb
+from util.func import get_qa_chain, initialize_vectordb,llm
 from typing import Dict, Any
 import asyncio
 
@@ -8,6 +8,7 @@ class QAService:
         self.qa_chain = None
         self.input_key = 'query'  # 默认使用'query'，但会在初始化时检测
         self.memory_input_key = 'input'  # 内存系统通常使用'input'
+        self.qa_chain = llm
 
     async def initialize(self):
         """Initialize QA service with proper key detection"""
@@ -22,9 +23,6 @@ class QAService:
                 })
                 for index_type in ["full_text", "section", "detail"]
             }
-
-            # 你也可以选择其中一个默认的vectorstore用于初始化qa_chain，例如 full_text
-            self.qa_chain = get_qa_chain()
             
             self.qa_chains = {
                 "full_text": get_qa_chain(self.vectordbs["full_text"]),
@@ -103,14 +101,14 @@ class QAService:
             docs = await self.async_get_docs(self.retrievers[index_type], question)
             unique_docs = await self.deduplicate_documents(docs)
 
-            full_query = await chain.prepare_input(question, unique_docs)
+            # full_query = await chain.prepare_input(question, unique_docs)
             
-            # 调用LLM
-            inputs = {self.input_key: full_query}
-            if hasattr(chain, 'memory') and chain.memory:
-                inputs[self.memory_input_key] = full_query
+            # # 调用LLM
+            # inputs = {self.input_key: full_query}
+            # if hasattr(chain, 'memory') and chain.memory:
+            #     inputs[self.memory_input_key] = full_query
                 
-            result = chain.invoke(inputs)
+            result = chain.invoke(question,unique_docs)
             
             sources = [
                 {

@@ -124,12 +124,12 @@ class ChatGLMLLM(Runnable):
             total_tokens += round_tokens
         return truncated_history
 
-    def invoke(self, query: str, config: Optional[dict] = None, **kwargs) -> str:
+    def invoke(self, query: str, unique_docs: List,config: Optional[dict] = None, **kwargs) -> str:
         from util.func import extract_question
         if not isinstance(config, dict):
             config = {}
 
-        query = str(query)
+        query = self.prepare_input(query, unique_docs)
         question = extract_question(query)
         try:
             logger.info(f"调用invoke，query: {query}")
