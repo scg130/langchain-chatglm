@@ -103,16 +103,7 @@ class QAService:
             docs = await self.async_get_docs(self.retrievers[index_type], question)
             unique_docs = await self.deduplicate_documents(docs)
 
-            # 准备上下文
-            context = "\n\n".join([
-                f"文档来源: {doc.metadata['original_source']}\n"
-                f"索引类型: {doc.metadata['index_type']}\n"
-                f"内容: {doc.page_content}"
-                for doc in unique_docs
-            ])
-            
-            # 构建完整问题
-            full_query = f"问题: {question}\n\n相关上下文:\n{context}"
+            full_query = await chain.prepare_input(question, unique_docs)
             
             # 调用LLM
             inputs = {self.input_key: full_query}

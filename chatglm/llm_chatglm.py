@@ -67,6 +67,46 @@ class ChatGLMLLM(Runnable):
             logger.error(f"模型初始化失败：{e}")
             raise RuntimeError(f"模型初始化失败：{str(e)}")
 
+    async def prepare_input(self, question: str, docs: List[Any]) -> str:
+        """
+        question: 用户提问
+        docs: 文档列表，包含page_content和metadata
+
+        返回拼接好的输入字符串，保证文档总token数不超过self.max_total_tokens预留空间
+        """
+        # 预留512个token给问题和其他prompt，实际你可以调整
+        max_doc_tokens = self.max_total_tokens - 512
+        if max_doc_tokens <= 0:
+            max_doc_tokens = self.max_total_tokens
+
+        truncated_docs = []
+        total_tokens = 0
+        for doc in docs:
+            tokens = self.tokenizer.encode(doc.page_content, add_special_tokens=False)
+            if total_tokens + len(tokens) > max_doc_tokens:
+                # 只截断当前文档剩余的长度
+                remaining = max_doc_tokens - total_tokens
+                tokens = tokens[:remaining]
+                content = self.tokenizer.decode(tokens)
+                truncated_docs.append({
+                    **doc.metadata,
+                    "page_content": content
+                })
+                break
+            else:
+                truncated_docs.append(doc)
+                total_tokens += len(tokens)
+
+        # 拼接上下文
+        context = "\n\n".join([
+            f"文档来源: {doc.get('original_source', '未知')}\n索引类型: {doc.get('index_type', '未知')}\n内容: {doc['page_content']}"
+            for doc in truncated_docs
+        ])
+
+        full_query = f"问题: {question}\n\n相关上下文:\n{context}"
+        return full_query
+
+
     def _truncate_history(self) -> List[Tuple[str, str]]:
         """截断历史对话，保证token数量不超过max_total_tokens"""
         max_len = self.max_total_tokens
