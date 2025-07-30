@@ -67,22 +67,6 @@ class ChatGLMLLM(Runnable):
             logger.error(f"模型初始化失败：{e}")
             raise RuntimeError(f"模型初始化失败：{str(e)}")
 
-    def _truncate_history(self) -> List[Tuple[str, str]]:
-        """截断历史对话，保证token数量不超过max_total_tokens"""
-        max_len = self.max_total_tokens
-        truncated_history = []
-        total_tokens = 0
-        # 从最新到最旧遍历历史
-        for q, a in reversed(self._history):
-            q_tokens = len(self.tokenizer.encode(q, add_special_tokens=False))
-            a_tokens = len(self.tokenizer.encode(a, add_special_tokens=False))
-            round_tokens = q_tokens + a_tokens
-
-            if total_tokens + round_tokens > max_len:
-                break
-            truncated_history.insert(0, (q, a))  # 头部插入，保持时间顺序
-            total_tokens += round_tokens
-        return truncated_history
 
     def invoke(self, query: str, config: Optional[dict] = None, **kwargs) -> str:
         from util.func import extract_question
@@ -94,7 +78,6 @@ class ChatGLMLLM(Runnable):
             logger.info(f"调用invoke，query: {query}")
             
             if self.is_chatglm:
-                truncated_history = self._truncate_history()
                 # logger.info(f"调用invoke，history: {truncated_history}")
 
                 # 正确调用 ChatGLM

@@ -98,9 +98,9 @@ class QAService:
             chain = self.qa_chains[index_type]
 
             # 使用正确的prep_inputs方法并处理结果
-            inputs = chain.prep_inputs({
+            inputs = {
                 self.input_key: question,
-            })
+            }
             if hasattr(chain, 'memory') and chain.memory:
                 inputs[self.memory_input_key] = inputs.get(self.input_key, question)
                 
