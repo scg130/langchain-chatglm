@@ -114,17 +114,25 @@ class QAService:
             else:
                 result = chain.invoke(inputs)
             
-            sources = [
-                {
-                    "page_content": doc.page_content,
-                    "metadata": doc.metadata
-                }
-                for doc in unique_docs
-            ]
+            # sources = [
+            #     {
+            #         "page_content": doc.page_content,
+            #         "metadata": doc.metadata
+            #     }
+            #     for doc in unique_docs
+            # ]
 
 
+            # 确保answer是有效的字符串格式
+            answer = ""
+            if isinstance(result, dict):
+                answer = result.get("result", result.get("answer", ""))
+            answer = str(answer).strip()
+            if not answer:
+                answer = "未能获取有效回答"
+                
             return {
-                "answer": result.get("result", result.get("answer", str(result))),
+                "answer": answer,
                 # "sources": sources,
                 "index_type": index_type
             }
