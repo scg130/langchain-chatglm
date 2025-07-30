@@ -5,6 +5,7 @@ import asyncio
 
 class QAService:
     def __init__(self):
+        self.qa_chain = llm
         self.input_key = 'query'  # 默认使用'query'，但会在初始化时检测
         self.memory_input_key = 'input'  # 内存系统通常使用'input'
 
