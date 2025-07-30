@@ -101,14 +101,19 @@ class QAService:
             docs = await self.async_get_docs(self.retrievers[index_type], question)
             unique_docs = await self.deduplicate_documents(docs)
 
-            # full_query = await chain.prepare_input(question, unique_docs)
-            
-            # # 调用LLM
-            # inputs = {self.input_key: full_query}
-            # if hasattr(chain, 'memory') and chain.memory:
-            #     inputs[self.memory_input_key] = full_query
+            # 使用正确的prep_inputs方法并处理结果
+            inputs = chain.prep_inputs({
+                self.input_key: question,
+                'context': unique_docs
+            })
+            if hasattr(chain, 'memory') and chain.memory:
+                inputs[self.memory_input_key] = inputs.get(self.input_key, question)
                 
-            result = chain.invoke(question,unique_docs)
+            # 对于ChatGLMLLM需要额外传递unique_docs参数
+            if hasattr(chain, 'prepare_input'):
+                result = chain.invoke(inputs[self.input_key], unique_docs)
+            else:
+                result = chain.invoke(inputs)
             
             sources = [
                 {
