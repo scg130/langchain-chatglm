@@ -96,28 +96,12 @@ class ChatGLMLLM(Runnable):
             if self.is_chatglm:
                 truncated_history = self._truncate_history()
                 # logger.info(f"调用invoke，history: {truncated_history}")
-                # 计算最大允许的 query token 数
-                used_tokens = sum(
-                    len(self.tokenizer.encode(q, add_special_tokens=False)) +
-                    len(self.tokenizer.encode(a, add_special_tokens=False))
-                    for q, a in truncated_history
-                )
-                # max_query_tokens = self.max_total_tokens - used_tokens
-                max_query_tokens = self.max_total_tokens - 0
-
-                # 截断 query
-                query_tokens = self.tokenizer.encode(query, add_special_tokens=False)
-                if len(query_tokens) > max_query_tokens:
-                    logger.warning("Query过长，自动截断")
-                    query_tokens = query_tokens[:max_query_tokens]
-                    query = self.tokenizer.decode(query_tokens)
 
                 # 正确调用 ChatGLM
                 result = self.model.chat(
                     self.tokenizer,
                     query,
                     history=[],
-                    max_new_tokens=self.max_new_tokens
                 )
 
                 if isinstance(result, tuple) and len(result) == 2:
@@ -127,7 +111,7 @@ class ChatGLMLLM(Runnable):
 
                 self._history.append((question, response))
                 logger.info(f"ChatGLM模型回复: {response}")
-                return {"result": response, "answer": response}
+                return response
 
             else:
                 # 普通模型不支持多轮历史，history只记录，实际调用时只用当前query

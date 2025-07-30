@@ -98,8 +98,6 @@ class QAService:
             logger.info(f"Determined index type: {index_type}")
             
             chain = self.qa_chains[index_type]
-            docs = await self.async_get_docs(self.retrievers[index_type], question)
-            unique_docs = await self.deduplicate_documents(docs)
 
             # 使用正确的prep_inputs方法并处理结果
             inputs = chain.prep_inputs({
@@ -108,11 +106,8 @@ class QAService:
             if hasattr(chain, 'memory') and chain.memory:
                 inputs[self.memory_input_key] = inputs.get(self.input_key, question)
                 
-            # 对于ChatGLMLLM需要额外传递unique_docs参数
-            if hasattr(chain, 'prepare_input'):
-                result = chain.invoke(inputs[self.input_key], unique_docs)
-            else:
-                result = chain.invoke(inputs)
+           
+            result = chain.invoke(inputs)
             
             # sources = [
             #     {
