@@ -34,8 +34,7 @@ class ChatGLMLLM(Runnable):
             self.tokenizer = AutoTokenizer.from_pretrained(
                 self.model_name,
                 trust_remote_code=True,
-                revision=revision,
-                resume_download=True
+                revision=revision
             )
 
             self.is_chatglm = "chatglm" in self.model_name.lower()
@@ -44,15 +43,13 @@ class ChatGLMLLM(Runnable):
                 self.model = AutoModel.from_pretrained(
                     self.model_name,
                     trust_remote_code=True,
-                    revision=revision,
-                    resume_download=True
+                    revision=revision
                 )
             else:
                 self.model = AutoModelForCausalLM.from_pretrained(
                     self.model_name,
                     trust_remote_code=True,
-                    revision=revision,
-                    resume_download=True
+                    revision=revision
                 )
 
             if self.device == "cuda":
