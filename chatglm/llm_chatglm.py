@@ -69,7 +69,6 @@ class ChatGLMLLM(Runnable):
 
 
     def invoke(self, query: str, config: Optional[dict] = None, **kwargs) -> str:
-        from util.func import extract_question
         if not isinstance(config, dict):
             config = {}
 
