@@ -111,9 +111,12 @@ class ChatGLMLLM(Runnable):
             else:
                 # 普通模型不支持多轮历史，history只记录，实际调用时只用当前query
                 prompt = f"用户：{query}\n助手："
-                tokens = self.tokenizer(prompt, truncation=True, max_length=self.max_total_tokens)
-                prompt = self.tokenizer.decode(tokens.input_ids, skip_special_tokens=True)
-                inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+                inputs = self.tokenizer(
+                    prompt,
+                    truncation=True,
+                    max_length=self.max_total_tokens,
+                    return_tensors="pt"
+                ).to(self.device)
 
                 outputs = self.model.generate(
                     **inputs,
