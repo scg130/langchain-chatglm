@@ -127,7 +127,7 @@ class ChatGLMLLM(Runnable):
 
                 self._history.append((question, response))
                 logger.info(f"ChatGLM模型回复: {response}")
-                return response
+                return {"result": response, "answer": response}
 
             else:
                 # 普通模型不支持多轮历史，history只记录，实际调用时只用当前query
@@ -155,7 +155,7 @@ class ChatGLMLLM(Runnable):
 
                 self._history.append((question, response))
                 logger.info(f"普通模型回复: {response}")
-                return response
+                return {"result": response, "answer": response}
 
         except Exception as e:
             logger.error(f"invoke 模型调用失败: {e}, query: {query}", exc_info=True)

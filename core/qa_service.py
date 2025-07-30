@@ -57,7 +57,7 @@ class QAService:
         
         try:
             response = self.qa_chain.invoke({self.input_key: prompt})
-            response = response.get("result", str(response)).strip().lower()
+            response = response.strip().lower()
             logger.info(f"索引类型判断结果: {response}")
             for keyword in ["full_text", "section", "detail"]:
                 if keyword in response:
