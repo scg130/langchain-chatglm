@@ -104,7 +104,6 @@ class QAService:
             # 使用正确的prep_inputs方法并处理结果
             inputs = chain.prep_inputs({
                 self.input_key: question,
-                'context': unique_docs
             })
             if hasattr(chain, 'memory') and chain.memory:
                 inputs[self.memory_input_key] = inputs.get(self.input_key, question)

@@ -67,53 +67,6 @@ class ChatGLMLLM(Runnable):
             logger.error(f"模型初始化失败：{e}")
             raise RuntimeError(f"模型初始化失败：{str(e)}")
 
-    def prepare_input(self, question: str, docs: List[Any]) -> str:
-        """
-        question: 用户提问
-        docs: 文档列表，可以是Document对象或字符串
-
-        返回拼接好的输入字符串，保证文档总token数不超过self.max_total_tokens预留空间
-        """
-        # 预留512个token给问题和其他prompt
-        max_doc_tokens = self.max_total_tokens - 512
-        if max_doc_tokens <= 0:
-            max_doc_tokens = self.max_total_tokens
-
-        context_parts = []
-        total_tokens = 0
-        
-        for doc in docs:
-            # 处理字符串或Document对象
-            if isinstance(doc, str):
-                content = doc
-                metadata = {}
-            else:
-                content = getattr(doc, 'page_content', str(doc))
-                metadata = getattr(doc, 'metadata', {})
-
-            tokens = self.tokenizer.encode(content, add_special_tokens=False)
-            if total_tokens + len(tokens) > max_doc_tokens:
-                remaining = max_doc_tokens - total_tokens
-                tokens = tokens[:remaining]
-                content = self.tokenizer.decode(tokens)
-                context_parts.append(
-                    f"文档来源: {metadata.get('original_source', '未知')}\n"
-                    f"索引类型: {metadata.get('index_type', '未知')}\n"
-                    f"内容: {content}"
-                )
-                break
-            else:
-                context_parts.append(
-                    f"文档来源: {metadata.get('original_source', '未知')}\n"
-                    f"索引类型: {metadata.get('index_type', '未知')}\n"
-                    f"内容: {content}"
-                )
-                total_tokens += len(tokens)
-
-        context = "\n\n".join(context_parts)
-        return f"问题: {question}\n\n相关上下文:\n{context}"
-
-
     def _truncate_history(self) -> List[Tuple[str, str]]:
         """截断历史对话，保证token数量不超过max_total_tokens"""
         max_len = self.max_total_tokens
@@ -131,12 +84,11 @@ class ChatGLMLLM(Runnable):
             total_tokens += round_tokens
         return truncated_history
 
-    def invoke(self, query: str, unique_docs: List[Any],config: Optional[dict] = None, **kwargs) -> str:
+    def invoke(self, query: str, config: Optional[dict] = None, **kwargs) -> str:
         from util.func import extract_question
         if not isinstance(config, dict):
             config = {}
 
-        query = self.prepare_input(query, unique_docs)
         question = extract_question(query)
         try:
             logger.info(f"调用invoke，query: {query}")
