@@ -61,8 +61,9 @@ class QAService:
             response = self.qa_chain.invoke({self.input_key: prompt})
             response = response.get("result", str(response)).strip().lower()
             logger.info(f"索引类型判断结果: {response}")
-            if response in ["full_text", "section", "detail"]:
-                return response
+            for keyword in ["full_text", "section", "detail"]:
+                if keyword in response:
+                    return keyword
             else:
                 # 使用启发式规则作为后备
                 if "详细" in question or "具体" in question or "精确" in question:
