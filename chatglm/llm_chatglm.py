@@ -89,7 +89,7 @@ class ChatGLMLLM(Runnable):
         if not isinstance(config, dict):
             config = {}
 
-        question = extract_question(query)
+        question = query
         try:
             logger.info(f"调用invoke，query: {query}")
             
