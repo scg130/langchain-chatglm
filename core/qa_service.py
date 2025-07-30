@@ -5,10 +5,8 @@ import asyncio
 
 class QAService:
     def __init__(self):
-        self.qa_chain = None
         self.input_key = 'query'  # 默认使用'query'，但会在初始化时检测
         self.memory_input_key = 'input'  # 内存系统通常使用'input'
-        self.qa_chain = llm
 
     async def initialize(self):
         """Initialize QA service with proper key detection"""
@@ -56,7 +54,7 @@ class QAService:
         )
         
         try:
-            response = self.qa_chain.invoke({self.input_key: prompt})
+            response = llm.invoke({self.input_key: prompt})
             response = response.strip().lower()
             logger.info(f"索引类型判断结果: {response}")
             for keyword in ["full_text", "section", "detail"]:
