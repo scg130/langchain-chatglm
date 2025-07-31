@@ -68,7 +68,7 @@ def get_qa_chain(vectordb):
     }
 
     kwargs["retriever"] = vectordb.as_retriever(search_kwargs={
-        "k": 5,
+        "k": 3,
         "score_threshold": 0.75  # 只返回相似度大于 0.75 的
     })
     return RetrievalQA.from_chain_type(**kwargs)
