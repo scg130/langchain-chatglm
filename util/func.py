@@ -1,16 +1,54 @@
+from core.vectorstore_manager import VectorStoreManager
+from core.llm_chatglm import ChatGLMLLM
 from langchain.chains import RetrievalQA
-from langchain.memory import ConversationBufferWindowMemory
-
 from langchain.prompts import PromptTemplate
 
-from langchain_community.chat_message_histories import RedisChatMessageHistory
-from chatglm.llm_chatglm import ChatGLMLLM
-from chroma.chroma_db import VectorStoreManager
-from config.logger_config import logger
-from typing import Dict, Any
-import re
+# 初始化向量库管理器实例
+vector_manager = VectorStoreManager()
+
+# 初始化LLM实例
+llm = ChatGLMLLM()
+
+def initialize_vectordb(dir_path: str):
+    """
+    初始化向量库（加载已有或新建）
+    dir_path: 文档根目录
+    返回一个dict，key格式为 "路径_indextype"
+    """
+    vectordbs = {}
+    for index_type in ["full_text", "section", "detail"]:
+        vectordbs[f"{dir_path}_{index_type}"] = vector_manager.get_vectorstore(dir_path, index_type)
+    return vectordbs
+
+def get_qa_chain(vectordb):
+    """
+    根据向量库返回LangChain检索问答链
+    """
+    prompt_template = """
+    文档内容（请严格参考）：
+    {context}
+
+    问题：
+    {question}
+
+    答案：
+    """
+    prompt = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
+
+    # 创建RetrievalQA链，llm使用自定义的ChatGLMLLM，检索器为vectordb.as_retriever
+    chain = RetrievalQA.from_chain_type(
+        llm=llm,
+        # memory=get_memory(),  # 使用全局定义的内存
+        retriever=vectordb.as_retriever(search_kwargs={"k": 3}),
+        chain_type="stuff",
+        chain_type_kwargs={"prompt": prompt},
+        return_source_documents=True
+    )
+    return chain
 
 import torch
+from langchain.memory import ConversationBufferWindowMemory
+from langchain_community.chat_message_histories import RedisChatMessageHistory
 
 def get_memory():
     if torch.cuda.is_available():
@@ -41,89 +79,3 @@ def get_memory():
             input_key="question"
         )
     return memory
-
-memory = get_memory()
-llm = ChatGLMLLM()
-
-def get_qa_chain(vectordb):
-    prompt_template = """
-        文档内容（请严格参考）：
-        {context}
-
-        问题：
-        {question}
-
-        答案：
-        """
-    prompt = PromptTemplate(
-        template=prompt_template,
-        input_variables=["context", "question"]
-    )
-
-    kwargs = {
-        "llm": llm,
-        # "memory": memory,
-        "return_source_documents": True,
-        "chain_type_kwargs": {"prompt": prompt}
-    }
-
-    kwargs["retriever"] = vectordb.as_retriever(search_kwargs={
-        "k": 3,
-        "score_threshold": 0.75  # 只返回相似度大于 0.75 的
-    })
-    return RetrievalQA.from_chain_type(**kwargs)
-
-def extract_question(text: str) -> str:
-    """
-    从包含'文档内容'和'问题'的文本中提取问题部分
-    """
-    # 匹配“问题：”之后直到“答案：”之前的内容，非贪婪匹配
-    pattern = r"问题：\s*(.*?)\s*(答案：|$)"
-    match = re.search(pattern, text, re.DOTALL)
-    if match:
-        question = match.group(1).strip()
-        return question
-    return ""
-
-# 初始化全局组件
-manager = VectorStoreManager()
-
-
-def initialize_vectordb(dir_path: str) -> Dict[str, Any]:
-    """初始化三种向量数据库：全文 / 章节 / 细节"""
-    try:
-        logger.info("⏳ 正在加载文档到多个向量数据库...")
-
-        # 定义三种切分策略
-        strategies = {
-            "full_text": {"chunk_size": 2000, "chunk_overlap": 200},
-            "section": {"chunk_size": 1000, "chunk_overlap": 100},
-            "detail": {"chunk_size": 300, "chunk_overlap": 50}
-        }
-
-        vectordbs = {}
-
-        for index_type, params in strategies.items():
-            logger.info(f"📄 开始加载 {index_type} 索引...")
-            docs = manager.load_documents(
-                input_path=dir_path,
-                file_pattern="**/*",
-                chunk_size=params["chunk_size"],
-                chunk_overlap=params["chunk_overlap"],
-                index_type=index_type
-            )
-            result = manager.add_documents(
-                dir_path=dir_path, new_docs=docs, index_type=index_type, batch_size=2000
-            )
-            logger.info(f"✅ {index_type} 加载完成. 成功率: {result['added']/result['total']:.1%}")
-
-            vectordb = manager.get_vectorstore(dir_path=dir_path, index_type=index_type)
-            key = f"{dir_path}_{index_type}"
-            vectordbs[key] = vectordb
-
-        return vectordbs
-
-    except Exception as e:
-        logger.error(f"❌ 向量数据库加载失败: {str(e)}")
-        raise
-

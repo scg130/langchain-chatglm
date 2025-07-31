@@ -1,139 +1,62 @@
-from config.logger_config import logger
-from util.func import get_qa_chain, initialize_vectordb,llm
 from typing import Dict, Any
+from config.logger_config import logger
+from util.func import get_qa_chain, initialize_vectordb, llm  # 这里可以根据实际情况调整
 import asyncio
+
 
 class QAService:
     def __init__(self):
-        self.qa_chain = llm
-        self.input_key = 'query'  # 默认使用'query'，但会在初始化时检测
-        self.memory_input_key = 'input'  # 内存系统通常使用'input'
+        self.qa_chain = llm  # 你可以用封装好的LLM
+        self.input_key = 'query'
+        self.memory_input_key = 'input'
+        self.vectordbs = {}
+        self.retrievers = {}
+        self.qa_chains = {}
 
     async def initialize(self):
-        """Initialize QA service with proper key detection"""
         try:
             dir_path = "./data"
             self.vectordbs = initialize_vectordb(dir_path=dir_path)
-        
             self.retrievers = {
-                index_type: self.vectordbs[f"{dir_path}_{index_type}"].as_retriever(search_kwargs={
-                    'k': 3,
-                    'filter': {'index_type': {'$in': [index_type]}}
-                })
-                for index_type in ["full_text", "section", "detail"]
+                t: self.vectordbs[f"{dir_path}_{t}"].as_retriever(search_kwargs={"k": 3, "filter": {"index_type": {"$in": [t]}}})
+                for t in ["full_text", "section", "detail"]
             }
-            
             self.qa_chains = {
-                "full_text": get_qa_chain(self.vectordbs[f"{dir_path}_full_text"]),
-                "section": get_qa_chain(self.vectordbs[f"{dir_path}_section"]),
-                "detail": get_qa_chain(self.vectordbs[f"{dir_path}_detail"]),
+                t: get_qa_chain(self.vectordbs[f"{dir_path}_{t}"])
+                for t in ["full_text", "section", "detail"]
             }
-
-            # 自动检测输入键
-            if hasattr(self.qa_chain, 'input_keys') and self.qa_chain.input_keys:
-                self.input_key = self.qa_chain.input_keys[0]
-            
-            # 检测内存系统需要的键
-            if hasattr(self.qa_chain, 'memory') and self.qa_chain.memory:
-                if hasattr(self.qa_chain.memory, 'input_key'):
-                    self.memory_input_key = self.qa_chain.memory.input_key
-            
-            logger.info(f"QA服务初始化完成 - 输入键: '{self.input_key}', 内存输入键: '{self.memory_input_key}'")
+            logger.info("QAService初始化完成")
         except Exception as e:
-            logger.error(f"QA服务初始化失败: {str(e)}")
+            logger.error(f"QAService初始化失败: {e}")
             raise
 
-    async def _determine_index_type(self, question: str) -> str:
-        """使用LLM判断问题适用的索引类型"""
-        prompt = (
-            "请根据问题内容判断最适合的索引类型：\n"
-            "1. 全文索引(full_text) - 适用于概括性、整体性问题\n"
-            "2. 章节索引(section) - 适用于询问文档结构或部分内容的问题\n"
-            "3. 详细索引(detail) - 适用于需要具体细节的问题\n\n"
-            f"问题：{question}\n\n"
-            "只需回答 full_text/section/detail 中的一个:"
-        )
-        
-        try:
-            response = llm.invoke({self.input_key: prompt})
-            response = response.strip().lower()
-            logger.info(f"索引类型判断结果: {response}")
-            for keyword in ["full_text", "section", "detail"]:
-                if keyword in response:
-                    return keyword
-            else:
-                # 使用启发式规则作为后备
-                if "详细" in question or "具体" in question or "精确" in question:
-                    return "detail"
-                elif "章节" in question or "部分" in question or "段落" in question:
-                    return "section"
-                else:
-                    return "full_text"
-                    
-        except Exception as e:
-            logger.error(f"索引类型判断失败: {str(e)}")
-            # 默认返回全文索引
+    def _determine_index_type_by_rule(self, question: str) -> str:
+        """根据简单规则判断索引类型"""
+        question_lower = question.lower()
+        if any(word in question_lower for word in ["详细", "具体", "精确"]):
+            return "detail"
+        elif any(word in question_lower for word in ["章节", "部分", "段落"]):
+            return "section"
+        else:
             return "full_text"
 
-    async def deduplicate_documents(self, doc_list):
-        seen = set()
-        unique_docs = []
-        for doc in doc_list:
-            key = doc.page_content.strip()
-            if key not in seen:
-                seen.add(key)
-                unique_docs.append(doc)
-        return unique_docs
-
-    async def async_get_docs(self, retriever, question):
-        return await asyncio.to_thread(retriever.invoke, question)
 
     async def ask_question(self, question: str) -> Dict[str, Any]:
-        """处理用户问题，实现智能路由"""
-        logger.info(f"ask_question: {question}")
         try:
-            # 判断索引类型
-            index_type = await self._determine_index_type(question)
-            logger.info(f"Determined index type: {index_type}")
-            
-            chain = self.qa_chains[index_type]
+            index_type = self._determine_index_type_by_rule(question)
+            chain = self.qa_chains.get(index_type)
+            if not chain:
+                chain = self.qa_chains.get("full_text")
 
-            # 使用正确的prep_inputs方法并处理结果
-            inputs = {
-                self.input_key: question,
-            }
-            if hasattr(chain, 'memory') and chain.memory:
-                inputs[self.memory_input_key] = inputs.get(self.input_key, question)
-                
-           
+            inputs = {self.input_key: question}
             result = chain.invoke(inputs)
             
-            # sources = [
-            #     {
-            #         "page_content": doc.page_content,
-            #         "metadata": doc.metadata
-            #     }
-            #     for doc in unique_docs
-            # ]
+            final_answer = result.get("result") if isinstance(result, dict) else result
 
-
-            # 确保answer是有效的字符串格式
-            answer = ""
-            if isinstance(result, dict):
-                answer = result.get("result", result.get("answer", ""))
-            answer = str(answer).strip()
-            if not answer:
-                answer = "未能获取有效回答"
-                
-            return {
-                "answer": answer,
-                # "sources": sources,
-                "index_type": index_type
-            }
-            
+            return {"answer": final_answer, "index_type": index_type}
         except Exception as e:
-            logger.error(f"处理问题时出错: {str(e)}")
-            raise RuntimeError(f"处理问题失败: {str(e)}")
+            logger.error(f"问答失败: {e}")
+            raise
+        
 
-# 全局服务实例
 qa_service = QAService()

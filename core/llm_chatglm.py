@@ -7,6 +7,7 @@ from requests.exceptions import ChunkedEncodingError
 import torch
 import os
 
+
 class ChatGLMLLM(Runnable):
     def __init__(self,
                  model_name_cuda="THUDM/chatglm2-6b",
@@ -67,19 +68,15 @@ class ChatGLMLLM(Runnable):
             logger.error(f"模型初始化失败：{e}")
             raise RuntimeError(f"模型初始化失败：{str(e)}")
 
-
-    def invoke(self, query: str, config: Optional[dict] = None, **kwargs) -> str:
+    def invoke(self, query: str, config: Optional[dict] = None, **kwargs) -> Any:
         if not isinstance(config, dict):
             config = {}
 
         question = query
         try:
             logger.info(f"调用invoke，query: {query}")
-            
-            if self.is_chatglm:
-                # logger.info(f"调用invoke，history: {truncated_history}")
 
-                # 正确调用 ChatGLM
+            if self.is_chatglm:
                 result = self.model.chat(
                     self.tokenizer,
                     query,
@@ -96,7 +93,6 @@ class ChatGLMLLM(Runnable):
                 return response
 
             else:
-                # 普通模型不支持多轮历史，history只记录，实际调用时只用当前query
                 prompt = f"用户：{query}\n助手："
                 inputs = self.tokenizer(
                     prompt,
@@ -121,7 +117,7 @@ class ChatGLMLLM(Runnable):
 
                 self._history.append((question, response))
                 logger.info(f"普通模型回复: {response}")
-                return {"result": response, "answer": response}
+                return response
 
         except Exception as e:
             logger.error(f"invoke 模型调用失败: {e}, query: {query}", exc_info=True)
