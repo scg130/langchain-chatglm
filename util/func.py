@@ -20,7 +20,7 @@ def initialize_vectordb(dir_path: str):
         vectordbs[f"{dir_path}_{index_type}"] = vector_manager.get_vectorstore(dir_path, index_type)
     return vectordbs
 
-def get_qa_chain(vectordb):
+def get_qa_chain(vectordb, retriever):
     """
     根据向量库返回LangChain检索问答链
     """
@@ -39,7 +39,7 @@ def get_qa_chain(vectordb):
     chain = RetrievalQA.from_chain_type(
         llm=llm,
         # memory=get_memory(),  # 使用全局定义的内存
-        retriever=vectordb.as_retriever(search_kwargs={"k": 3}),
+        retriever=retriever,
         chain_type="stuff",
         chain_type_kwargs={"prompt": prompt},
         return_source_documents=True

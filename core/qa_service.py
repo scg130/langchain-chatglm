@@ -12,17 +12,17 @@ class QAService:
         self.vectordbs = {}
         self.retrievers = {}
         self.qa_chains = {}
+        self.dir_path = "./data"  # 默认文档根目录
 
     async def initialize(self):
         try:
-            dir_path = "./data"
-            self.vectordbs = initialize_vectordb(dir_path=dir_path)
+            self.vectordbs = initialize_vectordb(dir_path=self.dir_path)
             self.retrievers = {
-                t: self.vectordbs[f"{dir_path}_{t}"].as_retriever(search_kwargs={"k": 3, "filter": {"index_type": {"$in": [t]}}})
+                f"{self.dir_path}_{t}": self.vectordbs[f"{self.dir_path}_{t}"].as_retriever(search_kwargs={"k": 3, "filter": {"index_type": {"$in": [t]}}})
                 for t in ["full_text", "section", "detail"]
             }
             self.qa_chains = {
-                t: get_qa_chain(self.vectordbs[f"{dir_path}_{t}"])
+                f"{self.dir_path}_{t}": get_qa_chain(self.vectordbs[f"{self.dir_path}_{t}"], self.retrievers[f"{self.dir_path}_{t}"])
                 for t in ["full_text", "section", "detail"]
             }
             logger.info("QAService初始化完成")
@@ -44,9 +44,9 @@ class QAService:
     async def ask_question(self, question: str) -> Dict[str, Any]:
         try:
             index_type = self._determine_index_type_by_rule(question)
-            chain = self.qa_chains.get(index_type)
+            chain = self.qa_chains.get(f"{self.dir_path}_{index_type}")
             if not chain:
-                chain = self.qa_chains.get("full_text")
+                chain = self.qa_chains.get(f"{self.dir_path}_{index_type}")
 
             inputs = {self.input_key: question}
             result = chain.invoke(inputs)
