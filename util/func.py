@@ -20,7 +20,7 @@ def initialize_vectordb(dir_path: str):
         vectordbs[f"{dir_path}_{index_type}"] = vector_manager.get_vectorstore(dir_path, index_type)
     return vectordbs
 
-def get_qa_chain(vectordb, retriever):
+def get_qa_chain(retriever):
     """
     根据向量库返回LangChain检索问答链
     """

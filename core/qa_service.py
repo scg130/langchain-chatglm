@@ -22,7 +22,7 @@ class QAService:
                 for t in ["full_text", "section", "detail"]
             }
             self.qa_chains = {
-                f"{self.dir_path}_{t}": get_qa_chain(self.vectordbs[f"{self.dir_path}_{t}"], self.retrievers[f"{self.dir_path}_{t}"])
+                f"{self.dir_path}_{t}": get_qa_chain(self.retrievers[f"{self.dir_path}_{t}"])
                 for t in ["full_text", "section", "detail"]
             }
             logger.info("QAService初始化完成")
