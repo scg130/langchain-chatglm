@@ -115,7 +115,8 @@ def initialize_vectordb(dir_path: str) -> Dict[str, Any]:
             logger.info(f"✅ {index_type} 加载完成. 成功率: {result['added']/result['total']:.1%}")
 
             vectordb = manager.get_vectorstore(dir_path=dir_path, index_type=index_type)
-            vectordbs[index_type] = vectordb
+            key = f"{dir_path}_{index_type}"
+            vectordbs[key] = vectordb
 
         return vectordbs
 

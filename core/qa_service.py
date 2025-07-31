@@ -14,9 +14,9 @@ class QAService:
         try:
             dir_path = "./data"
             self.vectordbs = initialize_vectordb(dir_path=dir_path)
-
+        
             self.retrievers = {
-                index_type: self.vectordbs[index_type].as_retriever(search_kwargs={
+                index_type: self.vectordbs[f"{dir_path}_{index_type}"].as_retriever(search_kwargs={
                     'k': 3,
                     'filter': {'index_type': {'$in': [index_type]}}
                 })
@@ -24,9 +24,9 @@ class QAService:
             }
             
             self.qa_chains = {
-                "full_text": get_qa_chain(self.vectordbs["full_text"]),
-                "section": get_qa_chain(self.vectordbs["section"]),
-                "detail": get_qa_chain(self.vectordbs["detail"]),
+                "full_text": get_qa_chain(self.vectordbs[f"{dir_path}_full_text"]),
+                "section": get_qa_chain(self.vectordbs[f"{dir_path}_section"]),
+                "detail": get_qa_chain(self.vectordbs[f"{dir_path}_detail"]),
             }
 
             # 自动检测输入键
