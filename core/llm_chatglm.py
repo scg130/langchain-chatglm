@@ -10,7 +10,7 @@ import os
 
 class ChatGLMLLM(Runnable):
     def __init__(self,
-                 model_name_cuda="THUDM/chatglm2-6b",
+                 model_name_cuda="THUDM/chatglm3-6b",
                  model_name_cpu="Qwen/Qwen1.5-0.5B",
                  revision="main",
                  max_new_tokens=64):
