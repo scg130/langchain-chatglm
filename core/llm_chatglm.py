@@ -72,6 +72,10 @@ class ChatGLMLLM(Runnable):
         if not isinstance(config, dict):
             config = {}
 
+        if not isinstance(query, str):
+            logger.warning(f"收到非字符串 query：{query}（类型：{type(query)}），尝试自动转换")
+            query = str(query)
+
         question = query
         try:
             logger.info(f"调用invoke，query: {query}")
