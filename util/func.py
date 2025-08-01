@@ -10,20 +10,12 @@ vector_manager = VectorStoreManager()
 llm = ChatGLMLLM()
 
 def initialize_vectordb(dir_path: str):
-    """
-    初始化向量库（加载已有或新建）
-    dir_path: 文档根目录
-    返回一个dict，key格式为 "路径_indextype"
-    """
     vectordbs = {}
     for index_type in ["full_text", "section", "detail"]:
         vectordbs[f"{dir_path}_{index_type}"] = vector_manager.get_vectorstore(dir_path, index_type)
     return vectordbs
 
 def get_qa_chain(retriever):
-    """
-    根据向量库返回LangChain检索问答链
-    """
     prompt_template = """
     文档内容（请严格参考）：
     {context}
