@@ -68,23 +68,61 @@ class ChatGLMLLM(Runnable):
             logger.error(f"模型初始化失败：{e}")
             raise RuntimeError(f"模型初始化失败：{str(e)}")
 
-    def invoke(self, query: str, config: Optional[dict] = None, **kwargs) -> Any:
+    def truncate_history(self, history: List[Tuple[str, str]], max_tokens: int) -> List[Tuple[str, str]]:
+        """截断 history，保证总 token 数不超 max_tokens"""
+        total_tokens = 0
+        truncated = []
+        # 逆序保留最近对话
+        for q, a in reversed(history):
+            tokens = self.tokenizer.encode(q + a, add_special_tokens=False)
+            if total_tokens + len(tokens) > max_tokens:
+                break
+            truncated.insert(0, (q, a))
+            total_tokens += len(tokens)
+        return truncated
+
+    def invoke(self, input: Any, config: Optional[dict] = None, **kwargs) -> Any:
         if not isinstance(config, dict):
             config = {}
 
-        if not isinstance(query, str):
-            logger.warning(f"收到非字符串 query：{query}（类型：{type(query)}），尝试自动转换")
-            query = str(query)
+        if isinstance(input, str):
+            query = input
+            history = []
+            context = ""
+        elif isinstance(input, dict):
+            query = input.get("query", "")
+            history = input.get("history", [])
+            context = input.get("context", "")
+        else:
+            query = str(input)
+            history = []
+            context = ""
 
         question = query
+
         try:
             logger.info(f"调用invoke，query: {query}")
 
             if self.is_chatglm:
+                # 计算可用tokens，减去新生成tokens
+                max_input_tokens = self.max_total_tokens
+
+                # 估算 context tokens
+                context_tokens = len(self.tokenizer.encode(context, add_special_tokens=False))
+
+                # 剩余可用给 history 的 token 数
+                max_history_tokens = max_input_tokens - context_tokens - len(self.tokenizer.encode(query, add_special_tokens=False))
+
+                # 截断历史对话
+                safe_history = self.truncate_history(history, max_history_tokens if max_history_tokens > 0 else 0)
+
+                # 拼接 context 和 query，调用 chat
+                full_query = f"请结合以下内容回答问题：\n{context}\n问题：{query}"
+
                 result = self.model.chat(
                     self.tokenizer,
-                    query,
-                    history=[],
+                    full_query,
+                    history=safe_history
                 )
 
                 if isinstance(result, tuple) and len(result) == 2:
@@ -97,7 +135,20 @@ class ChatGLMLLM(Runnable):
                 return response
 
             else:
-                prompt = f"用户：{query}\n助手："
+                # 普通模型拼接prompt
+                prompt = f"""请结合以下内容回答问题：
+
+                    文档内容：
+                    {context}
+
+                    历史对话：
+                    {history}
+
+                    当前问题：
+                    {query}
+
+                    助手：
+                    """
                 inputs = self.tokenizer(
                     prompt,
                     truncation=True,

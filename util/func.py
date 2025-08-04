@@ -1,19 +1,34 @@
 from core.vectorstore_manager import VectorStoreManager
-from core.llm_chatglm import ChatGLMLLM
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
+from langchain_core.runnables import RunnableMap
+from typing import Any, List, Tuple
 
 # 初始化向量库管理器实例
 vector_manager = VectorStoreManager()
-
-# 初始化LLM实例
-llm = ChatGLMLLM()
 
 def initialize_vectordb(dir_path: str):
     vectordbs = {}
     for index_type in ["full_text", "section", "detail"]:
         vectordbs[f"{dir_path}_{index_type}"] = vector_manager.get_vectorstore(dir_path, index_type)
     return vectordbs
+
+def format_history(history: List[Tuple[str, str]]) -> str:
+    """把对话历史列表格式化成字符串"""
+    return "\n".join([f"用户：{q}\n助手：{a}" for q, a in history])
+
+def get_qa_chain_with_history(llm: Any, retriever: Any, prompt: PromptTemplate) -> Any:
+    chain = (
+        RunnableMap({
+            "query": lambda x: x["query"],
+            "history": lambda x: format_history(x.get("history", [])),
+            "context": lambda x: "\n".join([doc.page_content for doc in retriever.get_relevant_documents(x["query"])])
+        })
+        | prompt
+        | llm
+    )
+    return chain
+
 
 def get_qa_chain(retriever):
     prompt_template = """

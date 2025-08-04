@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from api.routers import qa_router, health_router
-from core.qa_service import qa_service
+from api.routers.qa_router import qa_service
 from contextlib import asynccontextmanager
 from config.logger_config import logger
 

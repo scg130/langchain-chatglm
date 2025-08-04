@@ -1,14 +1,12 @@
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 class AskRequest(BaseModel):
     question: str
-
-class SourceDoc(BaseModel):
-    page_content: str
-    metadata: dict
+    history: Optional[List[Tuple[str, str]]] = None  # 可选历史对话
 
 class AskResponse(BaseModel):
     answer: str
-    sources: Optional[List[SourceDoc]] = []
-    index_type: Optional[str] = "full_text"
+    index_type: str = "full_text"
+    sources: List = []
+
