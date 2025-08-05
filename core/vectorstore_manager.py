@@ -117,10 +117,14 @@ class VectorStoreManager:
             docs = splitter.split_documents(raw_docs)
 
             for doc in tqdm(docs, desc="Processing chunks", disable=not show_progress):
+                abs_path = os.path.abspath(doc.metadata.get("source", ""))
+                mtime = int(os.path.getmtime(abs_path)) if os.path.exists(abs_path) else 0
+
                 doc.metadata.update({
                     "content_hash": hashlib.md5(doc.page_content.encode("utf-8")).hexdigest(),
                     "chunk_size": len(doc.page_content),
-                    "original_source": doc.metadata.get("source", ""),
+                    "original_source": abs_path,
+                    "source_key": f"{abs_path}:{mtime}",
                     "index_type": index_type
                 })
 
@@ -128,6 +132,16 @@ class VectorStoreManager:
         except Exception as e:
             self.logger.error(f"Failed to load documents: {str(e)}")
             raise
+
+    def _get_existing_hashes(self, vectordb: Chroma) -> Set[str]:
+        try:
+            results = vectordb.get(include=["metadatas"])
+            return {m["content_hash"] for m in results["metadatas"] if "content_hash" in m}
+        except CollectionNotFound:
+            return set()
+        except Exception as e:
+            self.logger.error(f"Failed to get existing hashes: {str(e)}")
+            return set()
 
     def add_directory(
         self,
@@ -140,16 +154,12 @@ class VectorStoreManager:
     ) -> Dict[str, int]:
         vectordb = self.get_vectorstore(dir_path, index_type)
 
-        if not force_reload and vectordb._collection.count() > 0:
-            if show_progress:
-                print(f"⏩ Using existing collection with {vectordb._collection.count()} documents")
-            return {
-                "total": 0,
-                "added": 0,
-                "duplicates": 0,
-                "failed": 0,
-                "status": "used_existing"
-            }
+        if force_reload:
+            self.logger.info("🧹 强制重新加载文档，清空已有向量库")
+            vectordb._collection.delete()
+            existing_keys = set()
+        else:
+            existing_keys = self._get_existing_keys(vectordb)
 
         docs = self.load_documents(
             dir_path,
@@ -158,13 +168,29 @@ class VectorStoreManager:
             index_type=index_type
         )
 
-        return self.add_documents(
+        filtered_docs = []
+        skipped = 0
+        for doc in docs:
+            if doc.metadata.get("source_key") not in existing_keys:
+                filtered_docs.append(doc)
+            else:
+                skipped += 1
+
+        stats = self.add_documents(
             dir_path,
-            docs,
+            filtered_docs,
             batch_size=batch_size,
             show_progress=show_progress,
             index_type=index_type
         )
+
+        stats.update({
+            "total": len(docs),
+            "skipped": skipped,
+            "status": "force_reload" if force_reload else "incremental"
+        })
+        return stats
+
 
     def add_documents(
         self,
