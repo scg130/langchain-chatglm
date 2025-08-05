@@ -143,6 +143,16 @@ class VectorStoreManager:
             self.logger.error(f"Failed to get existing hashes: {str(e)}")
             return set()
 
+    def _get_existing_keys(self, vectordb: Chroma) -> Set[str]:
+        try:
+            results = vectordb.get(include=["metadatas"])
+            return {m["source_key"] for m in results["metadatas"] if "source_key" in m}
+        except CollectionNotFound:
+            return set()
+        except Exception as e:
+            self.logger.error(f"Failed to get existing source_keys: {str(e)}")
+            return set()
+
     def add_directory(
         self,
         dir_path: str,
