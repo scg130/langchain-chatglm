@@ -207,15 +207,17 @@ class ChatGLMLLM(Runnable):
 
                 full_query = f"请结合以下内容回答问题：\n{context}\n问题：{query}"
 
+                partial_response = ""
                 for response, _ in self.model.stream_chat(
                     self.tokenizer,
                     full_query,
                     history=safe_history
                 ):
+                    partial_response += response
                     yield response
 
+                self._history.append((question, partial_response))    
             else:
-                # === 以下为 Qwen 或其他 CausalLM 模型的伪流式响应 ===
                 prompt = f"""请结合以下内容回答问题：
 
                     文档内容：
