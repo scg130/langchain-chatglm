@@ -20,3 +20,4 @@ numpy==1.26.4
 fastapi
 uvicorn
 bitsandbytes
+sse-starlette

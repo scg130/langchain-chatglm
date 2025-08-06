@@ -14,7 +14,7 @@ def format_history(history: List[Tuple[str, str]]) -> str:
 
 def get_limited_context(query: str, retriever, tokenizer, max_context_tokens: int = 2048) -> str:
     """从 retriever 取文档，限制上下文 token 数量"""
-    docs = retriever.get_relevant_documents(query)
+    docs = retriever.invoke(query)
     context = ""
     total_tokens = 0
     for doc in docs:
@@ -115,3 +115,21 @@ class QAService:
             answer = result
 
         return {"answer": answer, "index_type": index_type}
+
+    async def ask_stream(self, question: str, history: List[Tuple[str, str]] = None):
+        history = history or []
+        index_type = self._determine_index_type_by_rule(question)
+        key = self._get_key(index_type)
+        retriever = self.retrievers[key]
+        context = get_limited_context(question, retriever, self.tokenizer)
+
+        prompt_input = {
+            "query": question,
+            "history": history,
+            "context": context
+        }
+
+        chain = self.qa_chains.get(key)
+
+        async for chunk in chain.astream(prompt_input):
+            yield chunk  # 可以是纯文本，也可以是 {"token": "..."} 等结构

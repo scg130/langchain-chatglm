@@ -3,6 +3,7 @@ from transformers import AutoTokenizer, AutoModel, AutoModelForCausalLM, AutoCon
 from langchain_core.runnables import Runnable
 from config.logger_config import logger
 from requests.exceptions import ChunkedEncodingError
+import asyncio
 
 import torch
 import os
@@ -180,3 +181,88 @@ class ChatGLMLLM(Runnable):
 
     def get_history(self) -> List[Tuple[str, str]]:
         return self._history
+
+    def stream(self, input: Any, config: Optional[dict] = None, **kwargs):
+        if isinstance(input, str):
+            query = input
+            history = []
+            context = ""
+        elif isinstance(input, dict):
+            query = input.get("query", "")
+            history = input.get("history", [])
+            context = input.get("context", "")
+        else:
+            query = str(input)
+            history = []
+            context = ""
+
+        question = query
+
+        try:
+            if self.is_chatglm:
+                max_input_tokens = self.max_total_tokens
+                context_tokens = len(self.tokenizer.encode(context, add_special_tokens=False))
+                max_history_tokens = max_input_tokens - context_tokens - len(self.tokenizer.encode(query, add_special_tokens=False))
+                safe_history = self.truncate_history(history, max_history_tokens if max_history_tokens > 0 else 0)
+
+                full_query = f"请结合以下内容回答问题：\n{context}\n问题：{query}"
+
+                for response, _ in self.model.stream_chat(
+                    self.tokenizer,
+                    full_query,
+                    history=safe_history
+                ):
+                    yield response
+
+            else:
+                # === 以下为 Qwen 或其他 CausalLM 模型的伪流式响应 ===
+                prompt = f"""请结合以下内容回答问题：
+
+                    文档内容：
+                    {context}
+
+                    历史对话：
+                    {history}
+
+                    当前问题：
+                    {query}
+
+                    助手：
+                    """
+                inputs = self.tokenizer(
+                    prompt,
+                    truncation=True,
+                    max_length=self.max_total_tokens,
+                    return_tensors="pt"
+                ).to(self.device)
+
+                outputs = self.model.generate(
+                    **inputs,
+                    max_new_tokens=self.max_new_tokens,
+                    do_sample=True,
+                    temperature=0.7,
+                    top_p=0.95,
+                    repetition_penalty=1.1,
+                    return_dict_in_generate=True,
+                    output_scores=True
+                )
+
+                generated_ids = outputs.sequences[0][inputs['input_ids'].shape[-1]:]
+                partial_response = ""
+
+                for token_id in generated_ids:
+                    token_str = self.tokenizer.decode(token_id, skip_special_tokens=True)
+                    yield token_str  # 每步输出累计内容，也可只输出 delta
+
+                self._history.append((question, partial_response))
+                logger.info(f"普通模型（流式）回复: {partial_response}")
+
+        except Exception as e:
+            logger.error(f"stream 模型流式调用失败: {e}, query: {query}", exc_info=True)
+            raise RuntimeError(f"流式处理失败: {str(e)}")
+
+
+    async def astream(self, input: Any, config: Optional[dict] = None, **kwargs):
+        loop = asyncio.get_event_loop()
+        for chunk in await loop.run_in_executor(None, lambda: list(self.stream(input, config=config, **kwargs))):
+            yield chunk

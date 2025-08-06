@@ -22,7 +22,7 @@ def get_qa_chain_with_history(llm: Any, retriever: Any, prompt: PromptTemplate) 
         RunnableMap({
             "query": lambda x: x["query"],
             "history": lambda x: format_history(x.get("history", [])),
-            "context": lambda x: "\n".join([doc.page_content for doc in retriever.get_relevant_documents(x["query"])])
+            "context": lambda x: "\n".join([doc.page_content for doc in retriever.invoke(x["query"])])
         })
         | prompt
         | llm
