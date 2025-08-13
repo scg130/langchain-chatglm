@@ -9,6 +9,9 @@ export HF_ENDPOINT=https://hf-mirror.com
 
 docker run --name redis-server -p 6379:6379 -d redis redis-server --requirepass smd013012
 
+pip install huggingface-hub
+
+huggingface-cli download THUDM/chatglm3-6b --resume-download --local-dir ./chatglm3-6b
 
 
 {
