@@ -129,6 +129,7 @@ class QAService:
                         r['body'] for r in web_results if r.get('body')
                     )
                     context_parts.append(web_text)
+                logger.info(f"Web search results: {web_results}")
             except Exception as e:
                 logger.warning(f"DuckDuckGo 工具搜索失败: {e}")
         context = "\n".join([c for c in context_parts if c]).strip()
