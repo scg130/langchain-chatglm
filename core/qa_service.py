@@ -15,11 +15,6 @@ except Exception:
     DDGS = None
 
 
-def format_history(history: List[Tuple[str, str]]) -> str:
-    """把对话历史列表格式化成字符串"""
-    return "\n".join([f"用户：{q}\n助手：{a}" for q, a in history])
-
-
 def get_limited_context(query: str, retriever, tokenizer, max_context_tokens: int = 2048) -> str:
     """从 retriever 取文档，限制上下文 token 数量"""
     docs = retriever.invoke(query)
@@ -116,12 +111,13 @@ class QAService:
         if retriever is not None:
             context_parts.append(get_limited_context(
                 question, retriever, self.tokenizer, max_context_tokens=2048))
+        logger.info(is_web_search, self.web_search_tool)
         if is_web_search and self.web_search_tool:
             try:
                 # 把生成器结果转换为列表
                 web_results = await asyncio.to_thread(
                     lambda: list(self.web_search_tool.text(
-                        question, max_results=5))
+                        question, max_results=3))
                 )
                 if web_results:
                     # 拼接标题 + 摘要
