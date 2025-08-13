@@ -10,7 +10,7 @@ from core.llm_chatglm import ChatGLMLLM
 from util.func import get_qa_chain_with_history, initialize_vectordb
 
 try:
-    from duckduckgo_search import DDGS
+    from ddgs import DDGS
 except Exception:
     DDGS = None
 
@@ -39,11 +39,7 @@ class QAService:
         self.vector_registry: Dict[str, Any] = {}
         self.retriever_registry: Dict[str, Any] = {}
         self.chain_registry: Dict[str, Any] = {}
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-            "Accept-Language": "zh-CN,zh;q=0.9",  # 中文优先
-        }
-        self.web_search_tool = DDGS(headers=headers) if DDGS else None
+        self.web_search_tool = DDGS() if DDGS else None
         if self.web_search_tool is None:
             logger.warning(
                 "DuckDuckGoSearchRun 未可用，已禁用 web 搜索（缺少 langchain-community/duckduckgo-search 依赖）")
@@ -155,9 +151,19 @@ class QAService:
                 question, retriever, self.tokenizer))
         if is_web_search and self.web_search_tool:
             try:
-                web_text = await asyncio.to_thread(self.web_search_tool.invoke, question)
-                if web_text:
-                    context_parts.append(str(web_text))
+                # 把生成器结果转换为列表
+                web_results = await asyncio.to_thread(
+                    lambda: list(self.web_search_tool.text(
+                        question, max_results=3))
+                )
+                print("web_results", web_results)
+                if web_results:
+                    # 拼接标题 + 摘要
+                    web_text = "\n".join(
+                        r['body'] for r in web_results if r.get('body')
+                    )
+                    context_parts.append(web_text)
+                logger.info(f"Web search results: {web_results}")
             except Exception as e:
                 logger.warning(f"DuckDuckGo 工具搜索失败: {e}")
         context = "\n".join([c for c in context_parts if c]).strip()
