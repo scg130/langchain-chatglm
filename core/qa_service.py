@@ -118,7 +118,6 @@ class QAService:
                     lambda: list(self.web_search_tool.text(
                         question, max_results=3))
                 )
-                print("web_results", web_results)
                 if web_results:
                     # 拼接标题 + 摘要
                     web_text = "\n".join(
@@ -155,7 +154,6 @@ class QAService:
                     lambda: list(self.web_search_tool.text(
                         question, max_results=3))
                 )
-                print("web_results", web_results)
                 if web_results:
                     # 拼接标题 + 摘要
                     web_text = "\n".join(
