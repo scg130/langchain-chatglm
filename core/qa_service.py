@@ -39,17 +39,14 @@ class QAService:
         self.vector_registry: Dict[str, Any] = {}
         self.retriever_registry: Dict[str, Any] = {}
         self.chain_registry: Dict[str, Any] = {}
-        self.web_search_tool = DDGS() if DDGS else None
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+        self.web_search_tool = DDGS(headers=headers) if DDGS else None
         if self.web_search_tool is None:
             logger.warning(
                 "DuckDuckGoSearchRun 未可用，已禁用 web 搜索（缺少 langchain-community/duckduckgo-search 依赖）")
-        else:
-            # 示例：在调用 web_search_tool 前设置 headers
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-                "Accept-Language": "en-US,en;q=0.9",
-            }
-            self.web_search_tool.set_headers(headers)  # 如果支持
 
         self.prompt = PromptTemplate(
             input_variables=["query", "history", "context"],
