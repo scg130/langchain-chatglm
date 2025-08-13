@@ -7,9 +7,9 @@ import asyncio
 from core.llm_chatglm import ChatGLMLLM
 import os
 try:
-    from langchain_community.tools import DuckDuckGoSearchRun
+    from duckduckgo_search import DDGS
 except Exception:
-    DuckDuckGoSearchRun = None
+    DDGS = None
 
 
 def format_history(history: List[Tuple[str, str]]) -> str:
@@ -40,7 +40,7 @@ class QAService:
         self.vector_registry: Dict[str, Any] = {}
         self.retriever_registry: Dict[str, Any] = {}
         self.chain_registry: Dict[str, Any] = {}
-        self.web_search_tool = DuckDuckGoSearchRun() if DuckDuckGoSearchRun else None
+        self.web_search_tool = DDGS() if DDGS else None
         if self.web_search_tool is None:
             logger.warning("DuckDuckGoSearchRun 未可用，已禁用 web 搜索（缺少 langchain-community/duckduckgo-search 依赖）")
 
@@ -110,9 +110,16 @@ class QAService:
             context_parts.append(get_limited_context(question, retriever, self.tokenizer, max_context_tokens=2048))
         if is_web_search and self.web_search_tool:
             try:
-                web_text = await asyncio.to_thread(self.web_search_tool.invoke, question)
-                if web_text:
-                    context_parts.append(str(web_text))
+                # 把生成器结果转换为列表
+                web_results = await asyncio.to_thread(
+                    lambda: list(self.web_search_tool.text(question, max_results=5))
+                )
+                if web_results:
+                    # 拼接标题 + 摘要
+                    web_text = "\n".join(
+                        r['body'] for r in web_results if r.get('body')
+                    )
+                    context_parts.append(web_text)
             except Exception as e:
                 logger.warning(f"DuckDuckGo 工具搜索失败: {e}")
         context = "\n".join([c for c in context_parts if c]).strip()
