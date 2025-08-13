@@ -111,8 +111,6 @@ class QAService:
         if retriever is not None:
             context_parts.append(get_limited_context(
                 question, retriever, self.tokenizer, max_context_tokens=2048))
-        logger.info(is_web_search)
-        logger.info(self.web_search_tool)
         if is_web_search and self.web_search_tool:
             try:
                 # 把生成器结果转换为列表
@@ -120,6 +118,7 @@ class QAService:
                     lambda: list(self.web_search_tool.text(
                         question, max_results=3))
                 )
+                print("web_results", web_results)
                 if web_results:
                     # 拼接标题 + 摘要
                     web_text = "\n".join(

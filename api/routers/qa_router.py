@@ -1,13 +1,16 @@
+import asyncio
+
 from fastapi import APIRouter, HTTPException, Request
 from sse_starlette.sse import EventSourceResponse
-from core.qa_service import QAService
+
 from config.logger_config import logger
+from core.qa_service import QAService
 from schemas.qa_dto import AskRequest, AskResponse
-import asyncio
 
 qa_service = QAService()
 
 router = APIRouter(prefix="/api/v1", tags=["QA"])
+
 
 @router.post("/ask", response_model=AskResponse)
 async def ask(request: AskRequest):
@@ -26,6 +29,7 @@ async def ask(request: AskRequest):
     except Exception as e:
         logger.error(f"提问处理失败: {e}")
         raise HTTPException(500, f"处理问题失败: {str(e)}")
+
 
 @router.post("/ask/stream")
 async def ask_stream(request: Request, body: AskRequest):
