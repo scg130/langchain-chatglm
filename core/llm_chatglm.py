@@ -199,8 +199,6 @@ class ChatGLMLLM(Runnable):
                     **inputs,
                     max_new_tokens=self.max_new_tokens,
                     do_sample=False,  # 精确问答可用贪心
-                    temperature=0.2,  # 降低随机性
-                    top_p=0.9,
                     repetition_penalty=1.2
                 )
 
