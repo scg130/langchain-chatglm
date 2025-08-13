@@ -14,11 +14,13 @@ except ImportError:
 
 from chromadb import PersistentClient
 from langchain.schema import Document
-from langchain.text_splitter import RecursiveCharacterTextSplitter, TextSplitter
+from langchain.text_splitter import (RecursiveCharacterTextSplitter,
+                                     TextSplitter)
 from langchain_chroma import Chroma
-from langchain_community.document_loaders import (
-    DirectoryLoader, Docx2txtLoader, PyPDFLoader, TextLoader, UnstructuredFileLoader
-)
+from langchain_community.document_loaders import (DirectoryLoader,
+                                                  Docx2txtLoader, PyPDFLoader,
+                                                  TextLoader,
+                                                  UnstructuredFileLoader)
 from langchain_huggingface import HuggingFaceEmbeddings
 from tqdm import tqdm
 
@@ -105,7 +107,8 @@ class VectorStoreManager:
                 )
                 raw_docs = loader.load()
                 if show_progress:
-                    print(f"📂 Loaded {len(raw_docs)} documents from {input_path}")
+                    print(
+                        f"📂 Loaded {len(raw_docs)} documents from {input_path}")
 
             splitter = custom_splitter or RecursiveCharacterTextSplitter(
                 chunk_size=chunk_size,
@@ -117,14 +120,14 @@ class VectorStoreManager:
 
             for doc in tqdm(docs, desc="Processing chunks", disable=not show_progress):
                 abs_path = os.path.abspath(doc.metadata.get("source", ""))
-                mtime = int(os.path.getmtime(abs_path)) if os.path.exists(abs_path) else 0
+                mtime = int(os.path.getmtime(abs_path)
+                            ) if os.path.exists(abs_path) else 0
 
                 doc.metadata.update({
                     "content_hash": hashlib.md5(doc.page_content.encode("utf-8")).hexdigest(),
                     "chunk_size": len(doc.page_content),
                     "original_source": abs_path,
                     "source_key": f"{abs_path}:{mtime}",
-                    "index_type": index_type
                 })
 
             return docs
@@ -173,7 +176,7 @@ class VectorStoreManager:
             dir_path,
             file_pattern=file_pattern,
             show_progress=show_progress,
-            
+
         )
 
         filtered_docs = []
@@ -189,7 +192,7 @@ class VectorStoreManager:
             filtered_docs,
             batch_size=batch_size,
             show_progress=show_progress,
-            
+
         )
 
         stats.update({
@@ -198,7 +201,6 @@ class VectorStoreManager:
             "status": "force_reload" if force_reload else "incremental"
         })
         return stats
-
 
     def add_documents(
         self,
