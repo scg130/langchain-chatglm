@@ -114,8 +114,6 @@ class ChatGLMLLM(Runnable):
         question = query
 
         try:
-            logger.info(f"调用invoke，query: {query}")
-
             if self.is_chatglm:
                 # 计算可用tokens，减去新生成tokens
                 max_input_tokens = self.max_total_tokens
@@ -157,7 +155,7 @@ class ChatGLMLLM(Runnable):
 
                 请给出你的答案：
                 """.strip()
-
+                logger.info(f"ChatGLM模型输入: {full_query} {formatted_history}")
                 result = self.model.chat(
                     self.tokenizer,
                     full_query,
