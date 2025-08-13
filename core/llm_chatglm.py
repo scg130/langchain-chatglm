@@ -82,6 +82,13 @@ class ChatGLMLLM(Runnable):
             total_tokens += len(tokens)
         return truncated
 
+
+    # 截断方法
+    def truncate_text(self, text, tokenizer, max_tokens):
+        tokens = tokenizer.encode(text, add_special_tokens=False)
+        if len(tokens) > max_tokens:
+            tokens = tokens[:max_tokens]
+        return tokenizer.decode(tokens)
     def format_history(self, history_list):
         return "\n".join([
             f"用户: {q}\n助手: {a}"
@@ -114,16 +121,23 @@ class ChatGLMLLM(Runnable):
                 # 计算可用tokens，减去新生成tokens
                 max_input_tokens = self.max_total_tokens
 
-                # 估算 context tokens
-                context_tokens = len(self.tokenizer.encode(context, add_special_tokens=False))
+                # 预留生成空间
+                reserved_for_answer = int(self.max_new_tokens * 1.2)  # 预留更多防止溢出
+                available_tokens = max_input_tokens - reserved_for_answer
 
-                # 剩余可用给 history 的 token 数
-                max_history_tokens = max_input_tokens - context_tokens - len(self.tokenizer.encode(query, add_special_tokens=False))
+                # 为 context、history 分配 token
+                max_context_tokens = int(available_tokens * 0.6)  # 60% 给 context
+                max_history_tokens = int(available_tokens * 0.3)  # 30% 给 history
+                max_query_tokens   = available_tokens - max_context_tokens - max_history_tokens
+
+                # 截断 context / query
+                context = self.truncate_text(context, self.tokenizer, max_context_tokens)
+                query = self.truncate_text(query, self.tokenizer, max_query_tokens)
 
                 # 截断历史对话
-                safe_history = self.truncate_history(history, max_history_tokens if max_history_tokens > 0 else 0)
+                formatted_history = self.format_history(history)
+                formatted_history = self.truncate_text(formatted_history, self.tokenizer, max_history_tokens)
 
-                query_history = self.format_history(safe_history)
 
                 # 拼接 Prompt（更清晰的指令）
                 full_query = f"""
@@ -144,7 +158,7 @@ class ChatGLMLLM(Runnable):
                 result = self.model.chat(
                     self.tokenizer,
                     full_query,
-                    history=query_history
+                    history=formatted_history
                 )
 
                 if isinstance(result, tuple) and len(result) == 2:
