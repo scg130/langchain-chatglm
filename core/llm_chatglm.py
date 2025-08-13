@@ -82,6 +82,12 @@ class ChatGLMLLM(Runnable):
             total_tokens += len(tokens)
         return truncated
 
+    def format_history(self, history_list):
+        return "\n".join([
+            f"用户: {q}\n助手: {a}"
+            for q, a in history_list
+        ])
+
     def invoke(self, input: Any, config: Optional[dict] = None, **kwargs) -> Any:
         if not isinstance(config, dict):
             config = {}
@@ -117,13 +123,28 @@ class ChatGLMLLM(Runnable):
                 # 截断历史对话
                 safe_history = self.truncate_history(history, max_history_tokens if max_history_tokens > 0 else 0)
 
-                # 拼接 context 和 query，调用 chat
-                full_query = f"请结合以下内容回答问题：\n{context}\n问题：{query}"
+                query_history = self.format_history(safe_history)
+
+                # 拼接 Prompt（更清晰的指令）
+                full_query = f"""
+                你是一个智能助手，请仅根据提供的文档内容回答问题。
+                - 如果文档中找不到答案，请回答“文档中未找到相关信息”。
+                - 回答必须简洁、准确，不要编造信息。
+                - 可适当参考历史对话，但优先以文档内容为准。
+
+                【文档内容】：
+                {context}
+
+                【当前问题】：
+                {query}
+
+                请给出你的答案：
+                """.strip()
 
                 result = self.model.chat(
                     self.tokenizer,
                     full_query,
-                    history=safe_history
+                    history=query_history
                 )
 
                 if isinstance(result, tuple) and len(result) == 2:
@@ -137,19 +158,22 @@ class ChatGLMLLM(Runnable):
 
             else:
                 # 普通模型拼接prompt
-                prompt = f"""请结合以下内容回答问题：
+                prompt = f"""
+                你是一个智能助手，请基于提供的文档内容，参考历史对话，并准确回答用户问题。
+                - 如果文档中找不到答案，请明确说无法找到。
+                - 回答要简洁，不要编造信息。
 
-                    文档内容：
-                    {context}
+                【文档内容】：
+                {context}
 
-                    历史对话：
-                    {history}
+                【历史对话】：
+                {history}
 
-                    当前问题：
-                    {query}
+                【当前问题】：
+                {query}
 
-                    助手：
-                    """
+                请给出答案：
+                """
                 inputs = self.tokenizer(
                     prompt,
                     truncation=True,
@@ -160,10 +184,10 @@ class ChatGLMLLM(Runnable):
                 outputs = self.model.generate(
                     **inputs,
                     max_new_tokens=self.max_new_tokens,
-                    do_sample=True,
-                    temperature=0.7,
-                    top_p=0.95,
-                    repetition_penalty=1.1
+                    do_sample=False,  # 精确问答可用贪心
+                    temperature=0.2,  # 降低随机性
+                    top_p=0.9,
+                    repetition_penalty=1.2
                 )
 
                 response = self.tokenizer.decode(
