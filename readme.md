@@ -15,5 +15,5 @@ docker run --name redis-server -p 6379:6379 -d redis redis-server --requirepass 
   "question": "巴黎奥运会乒乓球男单冠军是谁",
   "history": [["你好","你好"]],
   "is_web_search": true,
-  "dir_path": ""
+  "dir_path": "./data/qntc"
 }
