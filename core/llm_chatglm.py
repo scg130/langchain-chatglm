@@ -1,6 +1,6 @@
 import asyncio
 import os
-from typing import Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 from langchain_core.runnables import Runnable
@@ -86,8 +86,19 @@ class ChatGLMLLM(Runnable):
             total_tokens += len(tokens)
         return truncated
 
-    # 截断方法
+    def convert_history(self, history: List[Tuple[str, str]]) -> List[Dict[str, str]]:
+        """
+        将 List[Tuple[str, str]] 转换成 ChatGLM3 需要的 List[Dict[str, str]] 格式
+        格式转换规则：
+            ("用户问题", "助手回答") -> {"role": "user", "content": "问题"}, {"role": "assistant", "content": "回答"}
+        """
+        converted = []
+        for question, answer in history:
+            converted.append({"role": "user", "content": question})
+            converted.append({"role": "assistant", "content": answer})
+        return converted
 
+    # 截断方法
     def truncate_text(self, text, tokenizer, max_tokens):
         tokens = tokenizer.encode(text, add_special_tokens=False)
         if len(tokens) > max_tokens:
@@ -141,25 +152,13 @@ class ChatGLMLLM(Runnable):
                     history, max_history_tokens)
 
                 # 拼接 Prompt（更清晰的指令）
-                full_query = f"""
-                你是一个智能助手，请仅根据提供的文档内容回答问题。
-                - 如果文档中找不到答案，请回答“文档中未找到相关信息”。
-                - 回答必须简洁、准确，不要编造信息。
-                - 可适当参考历史对话，但优先以文档内容为准。
+                full_query = f"请结合以下内容回答问题：\n{context}\n问题：{query}"
 
-                【文档内容】：
-                {context}
-
-                【当前问题】：
-                {query}
-
-                请给出你的答案：
-                """.strip()
                 logger.info(f"ChatGLM模型输入: {full_query} {formatted_history}")
                 result = self.model.chat(
                     self.tokenizer,
                     full_query,
-                    history=formatted_history
+                    history=self.convert_history(formatted_history),
                 )
 
                 if isinstance(result, tuple) and len(result) == 2:
@@ -251,7 +250,7 @@ class ChatGLMLLM(Runnable):
                 for response, _ in self.model.stream_chat(
                     self.tokenizer,
                     full_query,
-                    history=safe_history
+                    history=self.convert_history(safe_history),
                 ):
                     partial_response += response
                     yield response
