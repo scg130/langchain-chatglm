@@ -116,7 +116,7 @@ class QAService:
                 # 把生成器结果转换为列表
                 web_results = await asyncio.to_thread(
                     lambda: list(self.web_search_tool.text(
-                        question, max_results=3))
+                        question, max_results=5))
                 )
                 if web_results:
                     # 拼接标题 + 摘要
@@ -152,7 +152,7 @@ class QAService:
                 # 把生成器结果转换为列表
                 web_results = await asyncio.to_thread(
                     lambda: list(self.web_search_tool.text(
-                        question, max_results=3))
+                        question, max_results=5))
                 )
                 if web_results:
                     # 拼接标题 + 摘要
