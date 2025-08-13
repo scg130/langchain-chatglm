@@ -1,17 +1,19 @@
-from typing import Any, Optional, List, Tuple
-from transformers import AutoTokenizer, AutoModel, AutoModelForCausalLM, AutoConfig
-from langchain_core.runnables import Runnable
-from config.logger_config import logger
-from requests.exceptions import ChunkedEncodingError
 import asyncio
+import os
+from typing import Any, List, Optional, Tuple
 
 import torch
-import os
+from langchain_core.runnables import Runnable
+from requests.exceptions import ChunkedEncodingError
+from transformers import (AutoConfig, AutoModel, AutoModelForCausalLM,
+                          AutoTokenizer)
+
+from config.logger_config import logger
 
 
 class ChatGLMLLM(Runnable):
     def __init__(self,
-                 model_name_cuda="THUDM/chatglm3-6b", # THUDM/glm-4-9b-chat
+                 model_name_cuda="THUDM/chatglm3-6b",  # THUDM/glm-4-9b-chat
                  model_name_cpu="Qwen/Qwen1.5-0.5B",
                  revision="main",
                  max_new_tokens=64):
@@ -20,7 +22,8 @@ class ChatGLMLLM(Runnable):
 
         os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 
-        config = AutoConfig.from_pretrained(self.model_name, revision=revision, trust_remote_code=True)
+        config = AutoConfig.from_pretrained(
+            self.model_name, revision=revision, trust_remote_code=True)
         model_max_length = getattr(config, "max_position_embeddings",
                                    getattr(config, "seq_length",
                                            getattr(config, "n_positions",
@@ -30,7 +33,8 @@ class ChatGLMLLM(Runnable):
 
         logger.info(f'Using device: {self.device}')
         logger.info(f'Loading model: {self.model_name}')
-        logger.info(f'Model max length: {model_max_length}, max_new_tokens: {self.max_new_tokens}, max_total_tokens: {self.max_total_tokens}')
+        logger.info(
+            f'Model max length: {model_max_length}, max_new_tokens: {self.max_new_tokens}, max_total_tokens: {self.max_total_tokens}')
 
         try:
             self.tokenizer = AutoTokenizer.from_pretrained(
@@ -82,18 +86,13 @@ class ChatGLMLLM(Runnable):
             total_tokens += len(tokens)
         return truncated
 
-
     # 截断方法
+
     def truncate_text(self, text, tokenizer, max_tokens):
         tokens = tokenizer.encode(text, add_special_tokens=False)
         if len(tokens) > max_tokens:
             tokens = tokens[:max_tokens]
         return tokenizer.decode(tokens)
-    def format_history(self, history_list):
-        return "\n".join([
-            f"用户: {q}\n助手: {a}"
-            for q, a in history_list
-        ])
 
     def invoke(self, input: Any, config: Optional[dict] = None, **kwargs) -> Any:
         if not isinstance(config, dict):
@@ -122,22 +121,26 @@ class ChatGLMLLM(Runnable):
                 max_input_tokens = self.max_total_tokens
 
                 # 预留生成空间
-                reserved_for_answer = int(self.max_new_tokens * 1.2)  # 预留更多防止溢出
+                reserved_for_answer = int(
+                    self.max_new_tokens * 1.2)  # 预留更多防止溢出
                 available_tokens = max_input_tokens - reserved_for_answer
 
                 # 为 context、history 分配 token
-                max_context_tokens = int(available_tokens * 0.6)  # 60% 给 context
-                max_history_tokens = int(available_tokens * 0.3)  # 30% 给 history
-                max_query_tokens   = available_tokens - max_context_tokens - max_history_tokens
+                max_context_tokens = int(
+                    available_tokens * 0.6)  # 60% 给 context
+                max_history_tokens = int(
+                    available_tokens * 0.3)  # 30% 给 history
+                max_query_tokens = available_tokens - max_context_tokens - max_history_tokens
 
                 # 截断 context / query
-                context = self.truncate_text(context, self.tokenizer, max_context_tokens)
-                query = self.truncate_text(query, self.tokenizer, max_query_tokens)
+                context = self.truncate_text(
+                    context, self.tokenizer, max_context_tokens)
+                query = self.truncate_text(
+                    query, self.tokenizer, max_query_tokens)
 
                 # 截断历史对话
-                formatted_history = self.format_history(history)
-                formatted_history = self.truncate_text(formatted_history, self.tokenizer, max_history_tokens)
-
+                formatted_history = self.truncate_history(
+                    history, max_history_tokens)
 
                 # 拼接 Prompt（更清晰的指令）
                 full_query = f"""
@@ -237,9 +240,12 @@ class ChatGLMLLM(Runnable):
         try:
             if self.is_chatglm:
                 max_input_tokens = self.max_total_tokens
-                context_tokens = len(self.tokenizer.encode(context, add_special_tokens=False))
-                max_history_tokens = max_input_tokens - context_tokens - len(self.tokenizer.encode(query, add_special_tokens=False))
-                safe_history = self.truncate_history(history, max_history_tokens if max_history_tokens > 0 else 0)
+                context_tokens = len(self.tokenizer.encode(
+                    context, add_special_tokens=False))
+                max_history_tokens = max_input_tokens - context_tokens - \
+                    len(self.tokenizer.encode(query, add_special_tokens=False))
+                safe_history = self.truncate_history(
+                    history, max_history_tokens if max_history_tokens > 0 else 0)
 
                 full_query = f"请结合以下内容回答问题：\n{context}\n问题：{query}"
 
@@ -252,7 +258,7 @@ class ChatGLMLLM(Runnable):
                     partial_response += response
                     yield response
 
-                self._history.append((question, partial_response))    
+                self._history.append((question, partial_response))
             else:
                 prompt = f"""请结合以下内容回答问题：
 
@@ -289,16 +295,17 @@ class ChatGLMLLM(Runnable):
                 partial_response = ""
 
                 for token_id in generated_ids:
-                    token_str = self.tokenizer.decode(token_id, skip_special_tokens=True)
+                    token_str = self.tokenizer.decode(
+                        token_id, skip_special_tokens=True)
                     yield token_str  # 每步输出累计内容，也可只输出 delta
 
                 self._history.append((question, partial_response))
                 logger.info(f"普通模型（流式）回复: {partial_response}")
 
         except Exception as e:
-            logger.error(f"stream 模型流式调用失败: {e}, query: {query}", exc_info=True)
+            logger.error(
+                f"stream 模型流式调用失败: {e}, query: {query}", exc_info=True)
             raise RuntimeError(f"流式处理失败: {str(e)}")
-
 
     async def astream(self, input: Any, config: Optional[dict] = None, **kwargs):
         loop = asyncio.get_event_loop()
