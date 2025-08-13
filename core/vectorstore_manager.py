@@ -46,15 +46,15 @@ class VectorStoreManager:
         )
         self.logger = logging.getLogger(__name__)
 
-    def _get_collection_name(self, dir_path: str, index_type: str = "section") -> str:
+    def _get_collection_name(self, dir_path: str) -> str:
         dir_hash = hashlib.md5(dir_path.encode()).hexdigest()[:8]
-        return f"{index_type}_collection_{dir_hash}"
+        return f"collection_{dir_hash}"
 
-    def get_vectorstore(self, dir_path: str, index_type: str = "section") -> Chroma:
+    def get_vectorstore(self, dir_path: str) -> Chroma:
         try:
-            key = f"{dir_path}_{index_type}"
+            key = dir_path
             if key not in self.vectordbs:
-                collection_name = self._get_collection_name(dir_path, index_type)
+                collection_name = self._get_collection_name(dir_path)
                 self.vectordbs[key] = Chroma(
                     collection_name=collection_name,
                     embedding_function=self.embedding,
@@ -84,7 +84,6 @@ class VectorStoreManager:
         chunk_overlap: Optional[int] = None,
         custom_splitter: Optional[TextSplitter] = None,
         show_progress: bool = True,
-        index_type: str = "full_text"
     ) -> List[Document]:
         try:
             chunk_size = chunk_size or self.default_chunk_size
@@ -160,9 +159,8 @@ class VectorStoreManager:
         batch_size: int = 1000,
         force_reload: bool = False,
         show_progress: bool = True,
-        index_type: str = "section"
     ) -> Dict[str, int]:
-        vectordb = self.get_vectorstore(dir_path, index_type)
+        vectordb = self.get_vectorstore(dir_path)
 
         if force_reload:
             self.logger.info("🧹 强制重新加载文档，清空已有向量库")
@@ -175,7 +173,7 @@ class VectorStoreManager:
             dir_path,
             file_pattern=file_pattern,
             show_progress=show_progress,
-            index_type=index_type
+            
         )
 
         filtered_docs = []
@@ -191,7 +189,7 @@ class VectorStoreManager:
             filtered_docs,
             batch_size=batch_size,
             show_progress=show_progress,
-            index_type=index_type
+            
         )
 
         stats.update({
@@ -208,7 +206,6 @@ class VectorStoreManager:
         new_docs: List[Document],
         batch_size: int = 1000,
         show_progress: bool = True,
-        index_type: str = "section"
     ) -> Dict[str, int]:
         stats = {
             "total": len(new_docs),
@@ -221,7 +218,7 @@ class VectorStoreManager:
             self.logger.warning("No documents to add")
             return stats
 
-        vectordb = self.get_vectorstore(dir_path, index_type)
+        vectordb = self.get_vectorstore(dir_path)
         existing_hashes = self._get_existing_hashes(vectordb)
 
         filtered_docs = []
@@ -242,29 +239,16 @@ class VectorStoreManager:
 
         return stats
 
-    def _get_existing_hashes(self, vectordb: Chroma) -> Set[str]:
-        try:
-            results = vectordb.get(include=["metadatas"])
-            return {m["content_hash"] for m in results["metadatas"] if "content_hash" in m}
-        except CollectionNotFound:
-            return set()
-        except Exception as e:
-            self.logger.error(f"Failed to get existing hashes: {str(e)}")
-            return set()
-
     def query(
         self,
         dir_path: str,
         query_text: str,
         k: int = 5,
         filter_metadata: Optional[Dict] = None,
-        index_type: Optional[str] = None,
         **kwargs
     ) -> List[Document]:
-        vectordb = self.get_vectorstore(dir_path, index_type)
+        vectordb = self.get_vectorstore(dir_path)
         final_filter = filter_metadata or {}
-        if index_type:
-            final_filter.update({"index_type": index_type})
 
         return vectordb.similarity_search(
             query=query_text,
@@ -273,11 +257,11 @@ class VectorStoreManager:
             **kwargs
         )
 
-    def delete_collection(self, dir_path: str, index_type: str = "section") -> bool:
+    def delete_collection(self, dir_path: str) -> bool:
         try:
-            vectordb = self.get_vectorstore(dir_path, index_type)
+            vectordb = self.get_vectorstore(dir_path)
             self._client.delete_collection(vectordb._collection.name)
-            self.vectordbs.pop(f"{dir_path}_{index_type}", None)
+            self.vectordbs.pop(dir_path, None)
             self.logger.info(f"Deleted collection for path: {dir_path}")
             return True
         except Exception as e:
@@ -297,8 +281,8 @@ class VectorStoreManager:
                 self.logger.error(f"Failed to get info for {path}: {str(e)}")
         return collections
 
-    def optimize(self, dir_path: str, index_type: str = "section"):
-        vectordb = self.get_vectorstore(dir_path, index_type)
+    def optimize(self, dir_path: str):
+        vectordb = self.get_vectorstore(dir_path)
         vectordb.persist()
         self.logger.info(f"Optimized collection: {dir_path}")
 

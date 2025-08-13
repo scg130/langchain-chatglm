@@ -16,6 +16,8 @@ langchain_community
 
 redis
 
+ddgs
+
 numpy==1.26.4
 fastapi
 uvicorn

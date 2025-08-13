@@ -8,10 +8,7 @@ from typing import Any, List, Tuple
 vector_manager = VectorStoreManager()
 
 def initialize_vectordb(dir_path: str):
-    vectordbs = {}
-    for index_type in ["full_text", "section", "detail"]:
-        vectordbs[f"{dir_path}_{index_type}"] = vector_manager.get_vectorstore(dir_path, index_type)
-    return vectordbs
+    return vector_manager.get_vectorstore(dir_path)
 
 def format_history(history: List[Tuple[str, str]]) -> str:
     """把对话历史列表格式化成字符串"""
@@ -22,7 +19,8 @@ def get_qa_chain_with_history(llm: Any, retriever: Any, prompt: PromptTemplate) 
         RunnableMap({
             "query": lambda x: x["query"],
             "history": lambda x: format_history(x.get("history", [])),
-            "context": lambda x: "\n".join([doc.page_content for doc in retriever.invoke(x["query"])])
+            # 优先使用外部传入的 context（可包含 web 搜索），否则回退到检索器
+            "context": lambda x: (x.get("context") or "\n".join([doc.page_content for doc in retriever.invoke(x["query"])]))
         })
         | prompt
         | llm

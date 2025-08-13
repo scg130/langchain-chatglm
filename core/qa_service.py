@@ -5,6 +5,11 @@ from config.logger_config import logger
 from util.func import initialize_vectordb, get_qa_chain_with_history
 import asyncio
 from core.llm_chatglm import ChatGLMLLM
+import os
+try:
+    from langchain_community.tools import DuckDuckGoSearchRun
+except Exception:
+    DuckDuckGoSearchRun = None
 
 
 def format_history(history: List[Tuple[str, str]]) -> str:
@@ -27,13 +32,18 @@ def get_limited_context(query: str, retriever, tokenizer, max_context_tokens: in
 
 
 class QAService:
-    def __init__(self, dir_path: str = "./data"):
-        self.dir_path = dir_path
+    def __init__(self, base_data_dir: str = "./data"):
+        self.base_data_dir = base_data_dir
         self.llm = ChatGLMLLM()
         self.tokenizer = AutoTokenizer.from_pretrained(self.llm.model_name, trust_remote_code=True)
-        self.vectordbs = initialize_vectordb(dir_path=self.dir_path)
+        # 预加载注册表：dir_path -> vectordb/retriever/qa_chain
+        self.vector_registry: Dict[str, Any] = {}
+        self.retriever_registry: Dict[str, Any] = {}
+        self.chain_registry: Dict[str, Any] = {}
+        self.web_search_tool = DuckDuckGoSearchRun() if DuckDuckGoSearchRun else None
+        if self.web_search_tool is None:
+            logger.warning("DuckDuckGoSearchRun 未可用，已禁用 web 搜索（缺少 langchain-community/duckduckgo-search 依赖）")
 
-        # 通用prompt，支持query, history, context输入
         self.prompt = PromptTemplate(
             input_variables=["query", "history", "context"],
             template="""
@@ -52,84 +62,92 @@ class QAService:
                 """
         )
 
-        # retrievers, qa_chains会在initialize时初始化
-        self.retrievers: Dict[str, Any] = {}
-        self.qa_chains: Dict[str, Any] = {}
-
     async def initialize(self):
         try:
-            self.retrievers = {
-                self._get_key(t): self.vectordbs[self._get_key(t)].as_retriever(
-                    search_kwargs={"k": 3, "filter": {"index_type": {"$in": [t]}}}
-                )
-                for t in ["full_text", "section", "detail"]
-            }
-            self.qa_chains = {
-                self._get_key(t): get_qa_chain_with_history(self.llm,self.retrievers[self._get_key(t)],self.prompt)
-                for t in ["full_text", "section", "detail"]
-            }
-            logger.info("QAService初始化完成")
+            if not os.path.exists(self.base_data_dir):
+                logger.warning(f"数据目录不存在: {self.base_data_dir}")
+                return
+            registered: int = 0
+            # 将 base_data_dir 本身和其下包含文件的子目录都注册为候选向量库
+            dir_candidates: List[str] = []
+            for current_dir, subdirs, files in os.walk(self.base_data_dir):
+                # 只注册包含至少一个文件的目录
+                has_file = any(os.path.isfile(os.path.join(current_dir, f)) for f in files)
+                if has_file and current_dir not in dir_candidates:
+                    dir_candidates.append(current_dir)
+            for d in dir_candidates:
+                try:
+                    print(f"注册向量库: {d}")
+                    vectordb = initialize_vectordb(dir_path=d)
+                    retriever = vectordb.as_retriever(search_kwargs={"k": 3})
+                    chain = get_qa_chain_with_history(self.llm, retriever, self.prompt)
+                    self.vector_registry[d] = vectordb
+                    self.retriever_registry[d] = retriever
+                    self.chain_registry[d] = chain
+                    registered += 1
+                except Exception as e:
+                    logger.warning(f"注册向量库失败 {d}: {e}")
+            logger.info(f"QAService初始化完成，已注册向量库个数: {registered}")
         except Exception as e:
             logger.error(f"QAService初始化失败: {e}")
             raise
 
-    def _get_key(self, index_type: str) -> str:
-        """生成统一的key，方便动态获取"""
-        return f"{self.dir_path}_{index_type}"
+    def _get_chain_by_dir(self, dir_path: str):
+        if not dir_path:
+            return None, None
+        # 仅使用启动时注册的集合，不在请求时初始化
+        retriever = self.retriever_registry.get(dir_path)
+        chain = self.chain_registry.get(dir_path)
+        return retriever, chain
 
-    def _determine_index_type_by_rule(self, question: str) -> str:
-        question_lower = question.lower()
-        if any(word in question_lower for word in ["详细", "具体", "精确"]):
-            return "detail"
-        elif any(word in question_lower for word in ["章节", "部分", "段落"]):
-            return "section"
-        else:
-            return "full_text"
-
-    async def ask(self, question: str, history: List[Tuple[str, str]] = None) -> Dict[str, Any]:
+    async def ask(self, question: str, history: List[Tuple[str, str]] = None, is_web_search: bool = False, dir_path: str = "") -> Dict[str, Any]:
         history = history or []
-        index_type = self._determine_index_type_by_rule(question)
-        key = self._get_key(index_type)
+        retriever, chain = self._get_chain_by_dir(dir_path)
 
-        chain = self.qa_chains.get(key)
-        if not chain:
-            raise RuntimeError(f"找不到对应索引类型的问答链: {index_type}")
+        # 组合context
+        context_parts: List[str] = []
+        if retriever is not None:
+            context_parts.append(get_limited_context(question, retriever, self.tokenizer, max_context_tokens=2048))
+        if is_web_search and self.web_search_tool:
+            try:
+                web_text = await asyncio.to_thread(self.web_search_tool.invoke, question)
+                if web_text:
+                    context_parts.append(str(web_text))
+            except Exception as e:
+                logger.warning(f"DuckDuckGo 工具搜索失败: {e}")
+        context = "\n".join([c for c in context_parts if c]).strip()
 
-        retriever = self.retrievers.get(key)
-        if not retriever:
-            raise RuntimeError(f"找不到对应索引类型的检索器: {index_type}")
-
-        context = get_limited_context(question, retriever, self.tokenizer, max_context_tokens=2048)
-
-        inputs = {
-            "query": question,
-            "history": history,
-            "context": context,
-        }
-
-        result = await asyncio.to_thread(chain.invoke, inputs)
-
-        if isinstance(result, dict) and "result" in result:
-            answer = result["result"]
+        inputs = {"query": question, "history": history, "context": context}
+        print(f"inputs: {inputs}")
+        if chain is not None:
+            result = await asyncio.to_thread(chain.invoke, inputs)
+            answer = result["result"] if isinstance(result, dict) and "result" in result else result
         else:
-            answer = result
+            answer = await asyncio.to_thread(self.llm.invoke, inputs)
 
-        return {"answer": answer, "index_type": index_type}
+        return {"answer": answer}
 
-    async def ask_stream(self, question: str, history: List[Tuple[str, str]] = None):
+    async def ask_stream(self, question: str, history: List[Tuple[str, str]] = None, is_web_search: bool = False, dir_path: str = ""):
         history = history or []
-        index_type = self._determine_index_type_by_rule(question)
-        key = self._get_key(index_type)
-        retriever = self.retrievers[key]
-        context = get_limited_context(question, retriever, self.tokenizer)
+        retriever, chain = self._get_chain_by_dir(dir_path)
 
-        prompt_input = {
-            "query": question,
-            "history": history,
-            "context": context
-        }
+        context_parts: List[str] = []
+        if retriever is not None:
+            context_parts.append(get_limited_context(question, retriever, self.tokenizer))
+        if is_web_search and self.web_search_tool:
+            try:
+                web_text = await asyncio.to_thread(self.web_search_tool.invoke, question)
+                if web_text:
+                    context_parts.append(str(web_text))
+            except Exception as e:
+                logger.warning(f"DuckDuckGo 工具搜索失败: {e}")
+        context = "\n".join([c for c in context_parts if c]).strip()
 
-        chain = self.qa_chains.get(key)
+        prompt_input = {"query": question, "history": history, "context": context}
 
-        async for chunk in chain.astream(prompt_input):
-            yield chunk  # 可以是纯文本，也可以是 {"token": "..."} 等结构
+        if chain is not None:
+            async for chunk in chain.astream(prompt_input):
+                yield chunk
+        else:
+            async for chunk in self.llm.astream(prompt_input):
+                yield chunk

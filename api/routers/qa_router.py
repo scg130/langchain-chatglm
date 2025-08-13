@@ -14,10 +14,14 @@ async def ask(request: AskRequest):
     if not request.question or not request.question.strip():
         raise HTTPException(400, "问题不能为空")
     try:
-        result = await qa_service.ask(request.question, request.history or [])
+        result = await qa_service.ask(
+            question=request.question,
+            history=request.history or [],
+            is_web_search=bool(request.is_web_search),
+            dir_path=request.dir_path,
+        )
         return AskResponse(
             answer=result["answer"],
-            index_type=result.get("index_type", "full_text"),
         )
     except Exception as e:
         logger.error(f"提问处理失败: {e}")
@@ -30,8 +34,12 @@ async def ask_stream(request: Request, body: AskRequest):
 
     async def event_generator():
         try:
-            # 获取答案生成器（需要你的模型支持 yield 逐步返回）
-            async for chunk in qa_service.ask_stream(body.question, body.history):
+            async for chunk in qa_service.ask_stream(
+                question=body.question,
+                history=body.history or [],
+                is_web_search=bool(body.is_web_search),
+                dir_path=body.dir_path,
+            ):
                 if await request.is_disconnected():
                     break
                 yield f"data: {chunk}\n\n"
