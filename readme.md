@@ -15,8 +15,10 @@ huggingface-cli download THUDM/chatglm3-6b --resume-download --local-dir ./chatg
 
 
 {
-  "question": "巴黎奥运会乒乓球男单冠军是谁",
-  "history": [["你好","你好"]],
+  "question": "巴黎奥运会的乒乓球男单冠军是谁？",
+  "history": [
+    ["巴黎奥运会的乒乓球男单冠军是谁？", "冠军是樊振东。"]
+  ],
   "is_web_search": true,
-  "dir_path": "./data/qntc"
+  "dir_path": ""
 }
