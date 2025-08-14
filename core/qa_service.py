@@ -29,20 +29,42 @@ def get_limited_context(query: str, retriever, tokenizer, max_context_tokens: in
     return context.strip()
 
 
+def get_limited_context_fast(query: str, retriever, max_chars: int = 2000) -> str:
+    """更快的上下文构建（按字符数截断，避免分词开销）"""
+    try:
+        docs = retriever.invoke(query)
+        content_parts: List[str] = []
+        total_chars = 0
+        for doc in docs:
+            text = doc.page_content or ""
+            remaining = max_chars - total_chars
+            if remaining <= 0:
+                break
+            if len(text) > remaining:
+                content_parts.append(text[:remaining])
+                total_chars += remaining
+                break
+            else:
+                content_parts.append(text)
+                total_chars += len(text)
+        return "\n".join(content_parts).strip()
+    except Exception as e:
+        logger.warning(f"快速上下文构建失败: {e}")
+        return ""
+
+
 class QAService:
     def __init__(self, base_data_dir: str = "./data"):
         self.base_data_dir = base_data_dir
         self.llm = ChatGLMLLM()
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            self.llm.model_name, trust_remote_code=True)
+        self.tokenizer = AutoTokenizer.from_pretrained(self.llm.model_name, trust_remote_code=True)
         # 预加载注册表：dir_path -> vectordb/retriever/qa_chain
         self.vector_registry: Dict[str, Any] = {}
         self.retriever_registry: Dict[str, Any] = {}
         self.chain_registry: Dict[str, Any] = {}
-        self.web_search_tool = DDGS() if DDGS else None
-        if self.web_search_tool is None:
-            logger.warning(
-                "DuckDuckGoSearchRun 未可用，已禁用 web 搜索（缺少 langchain-community/duckduckgo-search 依赖）")
+        self._ddgs_available = DDGS is not None
+        if not self._ddgs_available:
+            logger.warning("ddgs 未可用，已禁用 web 搜索（请 pip install ddgs）")
 
         self.prompt = PromptTemplate(
             input_variables=["query", "history", "context"],
@@ -72,8 +94,7 @@ class QAService:
             dir_candidates: List[str] = []
             for current_dir, subdirs, files in os.walk(self.base_data_dir):
                 # 只注册包含至少一个文件的目录
-                has_file = any(os.path.isfile(
-                    os.path.join(current_dir, f)) for f in files)
+                has_file = any(os.path.isfile(os.path.join(current_dir, f)) for f in files)
                 if has_file and current_dir not in dir_candidates:
                     dir_candidates.append(current_dir)
             for d in dir_candidates:
@@ -81,8 +102,7 @@ class QAService:
                     print(f"注册向量库: {d}")
                     vectordb = initialize_vectordb(dir_path=d)
                     retriever = vectordb.as_retriever(search_kwargs={"k": 3})
-                    chain = get_qa_chain_with_history(
-                        self.llm, retriever, self.prompt)
+                    chain = get_qa_chain_with_history(self.llm, retriever, self.prompt)
                     self.vector_registry[d] = vectordb
                     self.retriever_registry[d] = retriever
                     self.chain_registry[d] = chain
@@ -106,34 +126,41 @@ class QAService:
         history = history or []
         retriever, chain = self._get_chain_by_dir(dir_path)
 
-        # 组合context
-        context_parts: List[str] = []
+        # 并行构建上下文以降低延迟
+        tasks: List[asyncio.Future] = []
         if retriever is not None:
-            context_parts.append(get_limited_context(
-                question, retriever, self.tokenizer, max_context_tokens=2048))
-        if is_web_search and self.web_search_tool:
-            try:
-                # 把生成器结果转换为列表
-                web_results = await asyncio.to_thread(
-                    lambda: list(self.web_search_tool.text(
-                        question, max_results=5))
-                )
-                if web_results:
-                    # 拼接标题 + 摘要
-                    web_text = "\n".join(
-                        r['body'] for r in web_results if r.get('body')
-                    )
-                    context_parts.append(web_text)
-            except Exception as e:
-                logger.warning(f"DuckDuckGo 工具搜索失败: {e}")
-        context = "\n".join([c for c in context_parts if c]).strip()
+            tasks.append(asyncio.to_thread(get_limited_context_fast, question, retriever, 2000))
+        if is_web_search and self._ddgs_available:
+            def _search():
+                try:
+                    with DDGS() as ddgs:
+                        return "\n".join([
+                            (r.get("body") or r.get("title") or "")
+                            for r in ddgs.text(question, max_results=3)
+                            if (r.get("body") or r.get("title"))
+                        ])
+                except Exception as e:
+                    logger.warning(f"DuckDuckGo 搜索失败: {e}")
+                    return ""
+            tasks.append(asyncio.to_thread(_search))
+
+        context_parts: List[str] = []
+        if tasks:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for r in results:
+                if isinstance(r, Exception):
+                    logger.warning(f"上下文构建子任务异常: {r}")
+                    continue
+                if isinstance(r, str) and r:
+                    context_parts.append(r)
+
+        context = "\n".join(context_parts).strip()
 
         inputs = {"query": question, "history": history, "context": context}
 
         if chain is not None:
             result = await asyncio.to_thread(chain.invoke, inputs)
-            answer = result["result"] if isinstance(
-                result, dict) and "result" in result else result
+            answer = result["result"] if isinstance(result, dict) and "result" in result else result
         else:
             answer = await asyncio.to_thread(self.llm.invoke, inputs)
 
@@ -145,28 +172,22 @@ class QAService:
 
         context_parts: List[str] = []
         if retriever is not None:
-            context_parts.append(get_limited_context(
-                question, retriever, self.tokenizer))
-        if is_web_search and self.web_search_tool:
+            context_parts.append(get_limited_context_fast(question, retriever))
+        if is_web_search and self._ddgs_available:
             try:
-                # 把生成器结果转换为列表
-                web_results = await asyncio.to_thread(
-                    lambda: list(self.web_search_tool.text(
-                        question, max_results=5))
-                )
-                if web_results:
-                    # 拼接标题 + 摘要
-                    web_text = "\n".join(
-                        r['body'] for r in web_results if r.get('body')
-                    )
-                    context_parts.append(web_text)
-                logger.info(f"Web search results: {web_results}")
+                with DDGS() as ddgs:
+                    web_text = "\n".join([
+                        (r.get("body") or r.get("title") or "")
+                        for r in ddgs.text(question, max_results=3)
+                        if (r.get("body") or r.get("title"))
+                    ])
+                    if web_text:
+                        context_parts.append(web_text)
             except Exception as e:
-                logger.warning(f"DuckDuckGo 工具搜索失败: {e}")
+                logger.warning(f"DuckDuckGo 搜索失败: {e}")
         context = "\n".join([c for c in context_parts if c]).strip()
 
-        prompt_input = {"query": question,
-                        "history": history, "context": context}
+        prompt_input = {"query": question, "history": history, "context": context}
 
         if chain is not None:
             async for chunk in chain.astream(prompt_input):
