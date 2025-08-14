@@ -152,7 +152,19 @@ class ChatGLMLLM(Runnable):
                     history, max_history_tokens)
 
                 # 拼接 Prompt（更清晰的指令）
-                full_query = f"请结合以下内容回答问题：\n{context}\n问题：{query}"
+                full_query = f"""
+                你是一个智能助手，请基于提供的文档内容，并准确回答用户问题。
+                - 如果文档中找不到答案，请明确说无法找到。
+                - 回答要简洁，不要编造信息。
+
+                【文档内容】：
+                {context}
+
+                【当前问题】：
+                {query}
+
+                请给出答案：
+                """
 
                 logger.info(f"ChatGLM模型输入: {full_query} {formatted_history}")
                 result = self.model.chat(
