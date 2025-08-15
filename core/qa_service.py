@@ -57,7 +57,8 @@ class QAService:
     def __init__(self, base_data_dir: str = "./data"):
         self.base_data_dir = base_data_dir
         self.llm = ChatGLMLLM()
-        self.tokenizer = AutoTokenizer.from_pretrained(self.llm.model_name, trust_remote_code=True)
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            self.llm.model_name, trust_remote_code=True)
         # 预加载注册表：dir_path -> vectordb/retriever/qa_chain
         self.vector_registry: Dict[str, Any] = {}
         self.retriever_registry: Dict[str, Any] = {}
@@ -65,24 +66,6 @@ class QAService:
         self._ddgs_available = DDGS is not None
         if not self._ddgs_available:
             logger.warning("ddgs 未可用，已禁用 web 搜索（请 pip install ddgs）")
-
-        self.prompt = PromptTemplate(
-            input_variables=["query", "history", "context"],
-            template="""
-                请根据以下文档内容和历史对话，回答用户提出的问题。
-
-                文档内容：
-                {context}
-
-                历史对话：
-                {history}
-
-                当前问题：
-                {query}
-
-                请简明准确地作答：
-                """
-        )
 
     async def initialize(self):
         try:
@@ -94,7 +77,8 @@ class QAService:
             dir_candidates: List[str] = []
             for current_dir, subdirs, files in os.walk(self.base_data_dir):
                 # 只注册包含至少一个文件的目录
-                has_file = any(os.path.isfile(os.path.join(current_dir, f)) for f in files)
+                has_file = any(os.path.isfile(
+                    os.path.join(current_dir, f)) for f in files)
                 if has_file and current_dir not in dir_candidates:
                     dir_candidates.append(current_dir)
             for d in dir_candidates:
@@ -102,7 +86,7 @@ class QAService:
                     print(f"注册向量库: {d}")
                     vectordb = initialize_vectordb(dir_path=d)
                     retriever = vectordb.as_retriever(search_kwargs={"k": 3})
-                    chain = get_qa_chain_with_history(self.llm, retriever, self.prompt)
+                    chain = get_qa_chain_with_history(self.llm, retriever)
                     self.vector_registry[d] = vectordb
                     self.retriever_registry[d] = retriever
                     self.chain_registry[d] = chain
@@ -129,7 +113,8 @@ class QAService:
         # 并行构建上下文以降低延迟
         tasks: List[asyncio.Future] = []
         if retriever is not None:
-            tasks.append(asyncio.to_thread(get_limited_context_fast, question, retriever, 2000))
+            tasks.append(asyncio.to_thread(
+                get_limited_context_fast, question, retriever, 2000))
         if is_web_search and self._ddgs_available:
             def _search():
                 try:
@@ -160,7 +145,8 @@ class QAService:
 
         if chain is not None:
             result = await asyncio.to_thread(chain.invoke, inputs)
-            answer = result["result"] if isinstance(result, dict) and "result" in result else result
+            answer = result["result"] if isinstance(
+                result, dict) and "result" in result else result
         else:
             answer = await asyncio.to_thread(self.llm.invoke, inputs)
 
@@ -187,7 +173,8 @@ class QAService:
                 logger.warning(f"DuckDuckGo 搜索失败: {e}")
         context = "\n".join([c for c in context_parts if c]).strip()
 
-        prompt_input = {"query": question, "history": history, "context": context}
+        prompt_input = {"query": question,
+                        "history": history, "context": context}
 
         if chain is not None:
             async for chunk in chain.astream(prompt_input):

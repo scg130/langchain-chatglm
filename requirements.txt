@@ -2,7 +2,7 @@ langchain==0.3.26
 langchain-chroma==0.2.4
 chromadb>=1.0.9
 sentence-transformers==2.6.1
-torch==1.13.1
+torch==2.2.0
 sentencepiece
 protobuf==3.20.3
 unstructured

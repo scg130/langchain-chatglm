@@ -200,6 +200,7 @@ class ChatGLMLLM(Runnable):
 
                 请给出答案：
                 """
+                logger.info(f"ChatGLM模型输入: {prompt} ")
                 inputs = self.tokenizer(
                     prompt,
                     truncation=True,

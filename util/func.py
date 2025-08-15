@@ -1,20 +1,28 @@
-from core.vectorstore_manager import VectorStoreManager
+import torch
+from langchain_community.chat_message_histories import RedisChatMessageHistory
+from langchain.memory import ConversationBufferWindowMemory
+from typing import Any, List, Tuple
+
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 from langchain_core.runnables import RunnableMap
-from typing import Any, List, Tuple
+
+from core.vectorstore_manager import VectorStoreManager
 
 # 初始化向量库管理器实例
 vector_manager = VectorStoreManager()
 
+
 def initialize_vectordb(dir_path: str):
     return vector_manager.get_vectorstore(dir_path)
+
 
 def format_history(history: List[Tuple[str, str]]) -> str:
     """把对话历史列表格式化成字符串"""
     return "\n".join([f"用户：{q}\n助手：{a}" for q, a in history])
 
-def get_qa_chain_with_history(llm: Any, retriever: Any, prompt: PromptTemplate) -> Any:
+
+def get_qa_chain_with_history(llm: Any, retriever: Any) -> Any:
     chain = (
         RunnableMap({
             "query": lambda x: x["query"],
@@ -22,7 +30,6 @@ def get_qa_chain_with_history(llm: Any, retriever: Any, prompt: PromptTemplate) 
             # 优先使用外部传入的 context（可包含 web 搜索），否则回退到检索器
             "context": lambda x: (x.get("context") or "\n".join([doc.page_content for doc in retriever.invoke(x["query"])]))
         })
-        | prompt
         | llm
     )
     return chain
@@ -38,7 +45,8 @@ def get_qa_chain(retriever):
 
     答案：
     """
-    prompt = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
+    prompt = PromptTemplate(template=prompt_template,
+                            input_variables=["context", "question"])
 
     # 创建RetrievalQA链，llm使用自定义的ChatGLMLLM，检索器为vectordb.as_retriever
     chain = RetrievalQA.from_chain_type(
@@ -51,9 +59,6 @@ def get_qa_chain(retriever):
     )
     return chain
 
-import torch
-from langchain.memory import ConversationBufferWindowMemory
-from langchain_community.chat_message_histories import RedisChatMessageHistory
 
 def get_memory():
     if torch.cuda.is_available():
