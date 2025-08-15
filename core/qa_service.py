@@ -64,6 +64,7 @@ class QAService:
         self.retriever_registry: Dict[str, Any] = {}
         self.chain_registry: Dict[str, Any] = {}
         self._ddgs_available = DDGS is not None
+        self.ddgs_client = DDGS()
         if not self._ddgs_available:
             logger.warning("ddgs 未可用，已禁用 web 搜索（请 pip install ddgs）")
 
@@ -118,12 +119,11 @@ class QAService:
         if is_web_search and self._ddgs_available:
             def _search():
                 try:
-                    with DDGS() as ddgs:
-                        return "\n".join([
-                            (r.get("body") or r.get("title") or "")
-                            for r in ddgs.text(question, max_results=3)
-                            if (r.get("body") or r.get("title"))
-                        ])
+                    return "\n".join([
+                        (r.get("body") or r.get("title") or "")
+                        for r in self.ddgs_client.text(question, max_results=3)
+                        if (r.get("body") or r.get("title"))
+                    ])
                 except Exception as e:
                     logger.warning(f"DuckDuckGo 搜索失败: {e}")
                     return ""
@@ -156,22 +156,35 @@ class QAService:
         history = history or []
         retriever, chain = self._get_chain_by_dir(dir_path)
 
-        context_parts: List[str] = []
+        # 并行构建上下文以降低延迟
+        tasks: List[asyncio.Future] = []
         if retriever is not None:
-            context_parts.append(get_limited_context_fast(question, retriever))
+            tasks.append(asyncio.to_thread(
+                get_limited_context_fast, question, retriever, 2000))
         if is_web_search and self._ddgs_available:
-            try:
-                with DDGS() as ddgs:
-                    web_text = "\n".join([
+            def _search():
+                try:
+                    return "\n".join([
                         (r.get("body") or r.get("title") or "")
-                        for r in ddgs.text(question, max_results=3)
+                        for r in self.ddgs_client.text(question, max_results=3)
                         if (r.get("body") or r.get("title"))
                     ])
-                    if web_text:
-                        context_parts.append(web_text)
-            except Exception as e:
-                logger.warning(f"DuckDuckGo 搜索失败: {e}")
-        context = "\n".join([c for c in context_parts if c]).strip()
+                except Exception as e:
+                    logger.warning(f"DuckDuckGo 搜索失败: {e}")
+                    return ""
+            tasks.append(asyncio.to_thread(_search))
+
+        context_parts: List[str] = []
+        if tasks:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for r in results:
+                if isinstance(r, Exception):
+                    logger.warning(f"上下文构建子任务异常: {r}")
+                    continue
+                if isinstance(r, str) and r:
+                    context_parts.append(r)
+
+        context = "\n".join(context_parts).strip()
 
         prompt_input = {"query": question,
                         "history": history, "context": context}

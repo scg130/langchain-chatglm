@@ -307,6 +307,7 @@ class ChatGLMLLM(Runnable):
                 for token_id in generated_ids:
                     token_str = self.tokenizer.decode(
                         token_id, skip_special_tokens=True)
+                    partial_response == token_str
                     yield token_str  # 每步输出累计内容，也可只输出 delta
 
                 self._history.append((question, partial_response))
