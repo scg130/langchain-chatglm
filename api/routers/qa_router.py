@@ -8,6 +8,7 @@ from core.qa_service import QAService
 from schemas.qa_dto import AskRequest, AskResponse
 
 qa_service = QAService()
+qa_service.search_engine = "google"
 
 router = APIRouter(prefix="/api/v1", tags=["QA"])
 
