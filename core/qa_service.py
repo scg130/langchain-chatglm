@@ -2,7 +2,6 @@ import asyncio
 import os
 from typing import Any, AsyncGenerator, Dict, List, Literal, Optional, Tuple
 
-from langchain.prompts import PromptTemplate
 from transformers import AutoTokenizer
 
 from config.logger_config import logger
