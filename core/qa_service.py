@@ -27,7 +27,7 @@ class QAService:
         self.base_data_dir = base_data_dir
         self.llm = ChatGLMLLM()
         self.tokenizer = AutoTokenizer.from_pretrained(
-            self.llm.model_name, trust_remote_code=True)
+            self.llm.model_name_or_path, trust_remote_code=True)
 
         # Registry for vector databases
         self.vector_registry: Dict[str, Any] = {}
