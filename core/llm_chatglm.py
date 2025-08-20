@@ -145,7 +145,7 @@ class ChatGLMLLM(Runnable):
         self.generation_config = GenerationConfig.from_model_config(
             self.model.config)
         self.generation_config.max_new_tokens = self.max_new_tokens
-        self.generation_config.do_sample = False
+        self.generation_config.do_sample = True
         self.generation_config.repetition_penalty = 1.1
         self.generation_config.pad_token_id = self.tokenizer.pad_token_id
 
