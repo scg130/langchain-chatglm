@@ -321,14 +321,10 @@ class ChatGLMLLM(Runnable):
                 logger.debug(f"ChatGLM模型输入: {full_query}")
 
                 # 使用模型chat方法
-                result = self.model.chat(
-                    self.tokenizer,
-                    full_query,
-                    history=self.convert_history(formatted_history),
-                    max_length=self.max_total_tokens,
-                    num_beams=1,
-                    do_sample=False
-                )
+                inputs = self.tokenizer(query, return_tensors="pt")
+                outputs = self.model.generate(**inputs)
+                result = self.tokenizer.decode(
+                    outputs[0], skip_special_tokens=True)
 
                 if isinstance(result, tuple) and len(result) == 2:
                     response, _ = result
