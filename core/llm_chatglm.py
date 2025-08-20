@@ -1,5 +1,6 @@
 import asyncio
 import os
+import re
 import sys
 from threading import Thread
 from typing import Any, Dict, Generator, List, Optional, Tuple, Union
@@ -8,10 +9,24 @@ import torch
 from langchain_core.runnables import Runnable
 from requests.exceptions import ChunkedEncodingError, ConnectionError
 from transformers import (AutoConfig, AutoModel, AutoModelForCausalLM,
-                          AutoTokenizer, GenerationConfig,
-                          TextIteratorStreamer)
+                          AutoTokenizer, GenerationConfig, StoppingCriteria,
+                          StoppingCriteriaList, TextIteratorStreamer)
 
 from config.logger_config import logger
+
+
+class StopOnTokens(StoppingCriteria):
+    def __init__(self, tokenizer, stop_words):
+        self.tokenizer = tokenizer
+        self.stop_words = stop_words
+        self.stop_ids = [tokenizer.encode(
+            word, add_special_tokens=False) for word in stop_words]
+
+    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
+        for stop_id in self.stop_ids:
+            if len(input_ids[0]) >= len(stop_id) and input_ids[0][-len(stop_id):].tolist() == stop_id:
+                return True
+        return False
 
 
 class ChatGLMLLM(Runnable):
@@ -21,12 +36,16 @@ class ChatGLMLLM(Runnable):
                  model_path_cuda: Optional[str] = None,
                  model_path_cpu: Optional[str] = None,
                  revision: str = "main",
-                 max_new_tokens: int = 1024,
-                 use_modelscope: bool = False):
+                 max_new_tokens: int = 512,  # 减少最大生成长度
+                 use_modelscope: bool = False,
+                 temperature: float = 0.3,   # 降低温度，减少随机性
+                 top_p: float = 0.8):        # 降低top_p，减少多样性
         """
         初始化大语言模型（支持 ChatGLM-4 和 Qwen）
         """
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.temperature = temperature
+        self.top_p = top_p
 
         # 确定最终模型路径/名称
         if self.device == "cuda" and model_path_cuda:
@@ -81,7 +100,7 @@ class ChatGLMLLM(Runnable):
                 f"Could not load config, using default length (8192): {e}")
             model_max_length = 8192
 
-        self.max_new_tokens = max_new_tokens
+        self.max_new_tokens = min(max_new_tokens, 768)  # 限制最大生成长度
         self.max_total_tokens = model_max_length - self.max_new_tokens
 
         logger.info(f'Device: {self.device}')
@@ -126,13 +145,8 @@ class ChatGLMLLM(Runnable):
         else:
             torch_dtype = torch.float32
 
-        # 加载模型 - 对于 ChatGLM-4 使用 AutoModelForCausalLM
-        if self.is_chatglm:
-            model_class = AutoModelForCausalLM  # ChatGLM-4 使用 CausalLM
-        else:
-            model_class = AutoModelForCausalLM  # Qwen 也使用 CausalLM
-
-        self.model = model_class.from_pretrained(
+        # 加载模型
+        self.model = AutoModelForCausalLM.from_pretrained(
             self.model_name_or_path,
             trust_remote_code=True,
             revision=revision,
@@ -141,12 +155,19 @@ class ChatGLMLLM(Runnable):
             low_cpu_mem_usage=True
         )
 
+        # 设置停止条件 - 添加更多停止词来提前终止生成
+        stop_words = ["。", "！", "？", "\n\n",
+                      "<|endoftext|>", "<|im_end|>", "谢谢", "希望"]
+        self.stop_criteria = StopOnTokens(self.tokenizer, stop_words)
+
         # 设置生成配置
         self.generation_config = GenerationConfig.from_model_config(
             self.model.config)
         self.generation_config.max_new_tokens = self.max_new_tokens
         self.generation_config.do_sample = True
-        self.generation_config.repetition_penalty = 1.1
+        self.generation_config.temperature = self.temperature
+        self.generation_config.top_p = self.top_p
+        self.generation_config.repetition_penalty = 1.2  # 增加重复惩罚
         self.generation_config.pad_token_id = self.tokenizer.pad_token_id
 
         self.model.eval()
@@ -202,19 +223,62 @@ class ChatGLMLLM(Runnable):
         """构建消息列表（适用于 ChatGLM-4 和 Qwen）"""
         messages = []
 
-        # 系统提示词
-        system_prompt = "你是一个智能助手，请基于提供的文档内容，并准确回答用户问题。\n- 如果文档中找不到答案，请明确说无法找到。\n- 回答要简洁，不要编造信息。"
+        # 更简洁的系统提示词
+        system_prompt = "请基于文档内容准确回答用户问题，回答要简洁明了，直接给出答案。如果文档中没有相关信息，请直接说'无法找到相关信息'。"
         messages.append({"role": "system", "content": system_prompt})
 
         # 添加历史对话
         history_messages = self.convert_history_to_messages(history)
         messages.extend(history_messages)
 
-        # 添加当前查询和上下文
-        user_content = f"文档内容：\n{context}\n\n问题：{query}" if context else query
+        # 添加当前查询和上下文 - 更简洁的格式
+        if context:
+            user_content = f"文档：{context}\n问题：{query}"
+        else:
+            user_content = query
+
         messages.append({"role": "user", "content": user_content})
 
         return messages
+
+    def clean_response(self, response: str) -> str:
+        """清理和精简响应内容"""
+        # 移除多余的换行和空格
+        response = re.sub(r'\n+', '\n', response).strip()
+        response = re.sub(r' +', ' ', response)
+
+        # 移除常见的啰嗦结尾
+        patterns = [
+            r'希望以上信息.*$',
+            r'如果还有其他问题.*$',
+            r'欢迎.*咨询.*$',
+            r'感谢.*提问.*$',
+            r'这是我.*回答.*$',
+            r'希望能.*帮助.*$'
+        ]
+
+        for pattern in patterns:
+            response = re.sub(pattern, '', response, flags=re.IGNORECASE)
+
+        # 截断过长的回答
+        max_length = 300  # 字符数限制
+        if len(response) > max_length:
+            # 尝试在句子边界处截断
+            sentences = re.split(r'[。！？]', response)
+            truncated = []
+            current_length = 0
+            for sentence in sentences:
+                if current_length + len(sentence) < max_length:
+                    truncated.append(sentence)
+                    current_length += len(sentence)
+                else:
+                    break
+            if truncated:
+                response = '。'.join(truncated) + '。'
+            else:
+                response = response[:max_length] + "..."
+
+        return response.strip()
 
     def invoke(self, input: Any, config: Optional[dict] = None, **kwargs) -> Any:
         if not isinstance(config, dict):
@@ -263,7 +327,7 @@ class ChatGLMLLM(Runnable):
                 )
             else:
                 # 回退到简单格式
-                prompt = f"{messages[-1]['content']}\n\n请回答："
+                prompt = f"{messages[-1]['content']}"
 
             logger.debug(f"模型输入: {prompt}")
 
@@ -275,16 +339,21 @@ class ChatGLMLLM(Runnable):
                 max_length=self.max_total_tokens
             ).to(self.device)
 
-            # 生成回复
-            outputs = self.model.generate(
-                **inputs,
-                max_new_tokens=self.max_new_tokens,
-                do_sample=False,
-                temperature=0.7,
-                repetition_penalty=1.1,
-                pad_token_id=self.tokenizer.pad_token_id,
-                eos_token_id=self.tokenizer.eos_token_id
-            )
+            # 生成回复 - 使用更严格的参数
+            with torch.no_grad():
+                outputs = self.model.generate(
+                    **inputs,
+                    max_new_tokens=self.max_new_tokens,
+                    do_sample=True,
+                    temperature=self.temperature,
+                    top_p=self.top_p,
+                    repetition_penalty=1.2,  # 增加重复惩罚
+                    pad_token_id=self.tokenizer.pad_token_id,
+                    eos_token_id=self.tokenizer.eos_token_id,
+                    stopping_criteria=StoppingCriteriaList(
+                        [self.stop_criteria]),
+                    num_return_sequences=1
+                )
 
             # 解码输出（跳过输入部分）
             response = self.tokenizer.decode(
@@ -292,21 +361,16 @@ class ChatGLMLLM(Runnable):
                 skip_special_tokens=True
             ).strip()
 
+            # 清理和精简响应
+            response = self.clean_response(response)
+
             self._history.append((question, response))
-            logger.info(f"模型回复: {response}")
+            logger.info(f"模型回复长度: {len(response)} 字符")
             return response
 
         except Exception as e:
             logger.error(f"invoke 模型调用失败: {e}, query: {query}", exc_info=True)
             raise RuntimeError(f"处理问题失败: {str(e)}")
-
-    def get_history(self) -> List[Tuple[str, str]]:
-        return self._history
-
-    def clear_history(self):
-        """清空对话历史"""
-        self._history = []
-        logger.info("对话历史已清空")
 
     def stream(self, input: Any, config: Optional[dict] = None, **kwargs) -> Generator[str, None, None]:
         """流式生成响应"""
