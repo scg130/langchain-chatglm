@@ -39,13 +39,13 @@ wget -c -O GPT_SoVITS/pretrained_models/gsv-v2final-pretrained/s2D2333k.pth "htt
 
 wget -c -O GPT_SoVITS/pretrained_models/gsv-v2final-pretrained/s2G2333k.pth "https://huggingface.co/lj1995/GPT-SoVITS/resolve/main/gsv-v2final-pretrained/s2G2333k.pth?download=true"
 
-mkdir -p GPT_SoVITS/text && \
-cd GPT_SoVITS/text && \
+mkdir -p text && \
+cd text/ && \
 wget -O G2PWModel.zip "https://www.modelscope.cn/models/XXXXRT/GPT-SoVITS-Pretrained/resolve/master/G2PWModel.zip" && \
 unzip -o G2PWModel.zip && \
 rm -f G2PWModel.zip && \
 mv -f G2PWModel G2PWModel
-cd ../..
+cd ..
 
 export is_half=True
 export is_share=True
