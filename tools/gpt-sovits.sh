@@ -44,8 +44,7 @@ mkdir -p text && \
 cd text/ && \
 wget -O G2PWModel.zip "https://www.modelscope.cn/models/XXXXRT/GPT-SoVITS-Pretrained/resolve/master/G2PWModel.zip" && \
 unzip -o G2PWModel.zip && \
-rm -f G2PWModel.zip && \
-mv -f G2PWModel G2PWModel
+rm -f G2PWModel.zip 
 cd ..
 
 export is_half=True
