@@ -5,7 +5,7 @@ sudo apt install -y build-essential \
     libgtk-3-dev libwebkit2gtk-4.0-dev libgtk-3-0 libgl1-mesa-dev \
     libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
 cd /usr/src/local
-git clone https://github.com/ddean2009/MoneyPrinterPlus.git
+git clone https://github.com/scg130/MoneyPrinterPlus.git
 cd MoneyPrinterPlus
 
 pip install -r requirements.txt

@@ -14,7 +14,7 @@ sudo apt-get install -y ffmpeg libsox-dev build-essential \
 # 下载 GPT-SoVITS 仓库
 # -------------------------------
 cd /usr/local/src/
-git clone https://github.com/RVC-Boss/GPT-SoVITS.git
+git clone git@github.com:scg130/GPT-SoVITS.git
 cd GPT-SoVITS
 
 # -------------------------------

@@ -1,7 +1,7 @@
 #!/bin/bash
 sudo apt-get update --fix-missing
 cd /usr/src/local
-git clone https://gitee.com/felixchina2024/moneyprinterturbo.git
+git clone git@github.com:scg130/MoneyPrinterTurbo.git
 cd moneyprinterturbo
 pip install -r requirements.txt
 sudo apt-get install imagemagick -y
