@@ -73,7 +73,7 @@ wget -O G2PWModel.zip "https://www.modelscope.cn/models/XXXXRT/GPT-SoVITS-Pretra
 unzip -o G2PWModel.zip
 rm -f G2PWModel.zip
 cd ../..
-
+ 
 # -------------------------------
 # 环境变量
 # -------------------------------
