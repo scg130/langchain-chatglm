@@ -29,50 +29,11 @@ conda activate GPTSoVits
 # 安装 Python 依赖
 pip install --no-deps -r extra-req.txt
 pip install -r requirements.txt
+pip install onnxruntime==1.18
 
-# -------------------------------
-# 创建模型目录
-# -------------------------------
-mkdir -p GPT_SoVITS/pretrained_models/chinese-hubert-base/
-mkdir -p GPT_SoVITS/pretrained_models/v2Pro/
-mkdir -p GPT_SoVITS/pretrained_models/chinese-roberta-wwm-ext-large/
-mkdir -p GPT_SoVITS/pretrained_models/gsv-v2final-pretrained/
-
-# -------------------------------
-# 下载模型文件
-# -------------------------------
-
-# v2Pro
-wget -c -O GPT_SoVITS/pretrained_models/v2Pro/s2Dv2Pro.pth "https://huggingface.co/lj1995/GPT-SoVITS/resolve/main/v2Pro/s2Dv2Pro.pth?download=true"
-wget -c -O GPT_SoVITS/pretrained_models/v2Pro/s2Gv2Pro.pth "https://huggingface.co/lj1995/GPT-SoVITS/resolve/main/v2Pro/s2Gv2Pro.pth?download=true"
-
-# s1v3
-wget -c -O GPT_SoVITS/pretrained_models/s1v3.ckpt "https://huggingface.co/lj1995/GPT-SoVITS/resolve/main/s1v3.ckpt?download=true"
-
-# chinese-roberta-wwm-ext-large
-wget -c -O GPT_SoVITS/pretrained_models/chinese-roberta-wwm-ext-large/config.json "https://huggingface.co/lj1995/GPT-SoVITS/resolve/main/chinese-roberta-wwm-ext-large/config.json?download=true"
-wget -c -O GPT_SoVITS/pretrained_models/chinese-roberta-wwm-ext-large/pytorch_model.bin "https://huggingface.co/lj1995/GPT-SoVITS/resolve/main/chinese-roberta-wwm-ext-large/pytorch_model.bin?download=true"
-wget -c -O GPT_SoVITS/pretrained_models/chinese-roberta-wwm-ext-large/tokenizer.json "https://huggingface.co/lj1995/GPT-SoVITS/resolve/main/chinese-roberta-wwm-ext-large/tokenizer.json?download=true"
-
-# chinese-hubert-base
-wget -c -O GPT_SoVITS/pretrained_models/chinese-hubert-base/config.json "https://huggingface.co/lj1995/GPT-SoVITS/resolve/main/chinese-hubert-base/config.json?download=true"
-wget -c -O GPT_SoVITS/pretrained_models/chinese-hubert-base/pytorch_model.bin "https://huggingface.co/lj1995/GPT-SoVITS/resolve/main/chinese-hubert-base/pytorch_model.bin?download=true"
-wget -c -O GPT_SoVITS/pretrained_models/chinese-hubert-base/preprocessor_config.json "https://huggingface.co/lj1995/GPT-SoVITS/resolve/main/chinese-hubert-base/preprocessor_config.json?download=true"
-wget -c -O GPT_SoVITS/pretrained_models/chinese-hubert-base/tokenizer.json "https://huggingface.co/lj1995/GPT-SoVITS/resolve/main/chinese-hubert-base/tokenizer.json?download=true"
-
-# gsv-v2final-pretrained
-wget -c -O GPT_SoVITS/pretrained_models/gsv-v2final-pretrained/s1bert25hz-5kh-longer-epoch%3D12-step%3D369668.ckpt "https://huggingface.co/lj1995/GPT-SoVITS/resolve/main/gsv-v2final-pretrained/s1bert25hz-5kh-longer-epoch%3D12-step%3D369668.ckpt?download=true"
-wget -c -O GPT_SoVITS/pretrained_models/gsv-v2final-pretrained/s2D2333k.pth "https://huggingface.co/lj1995/GPT-SoVITS/resolve/main/gsv-v2final-pretrained/s2D2333k.pth?download=true"
-wget -c -O GPT_SoVITS/pretrained_models/gsv-v2final-pretrained/s2G2333k.pth "https://huggingface.co/lj1995/GPT-SoVITS/resolve/main/gsv-v2final-pretrained/s2G2333k.pth?download=true"
-
-# G2PWModel
-cd /usr/src/local/GPT-SoVITS/
-mkdir -p GPT_SoVITS/text
-cd GPT_SoVITS/text/
-wget -O G2PWModel.zip "https://www.modelscope.cn/models/XXXXRT/GPT-SoVITS-Pretrained/resolve/master/G2PWModel.zip"
-unzip -o G2PWModel.zip
-rm -f G2PWModel.zip
-cd ../..
+pip install ipykernel
+sudo sed -i 's/wget --tries=25/wget -c --tries=25/g' install.sh
+bash install.sh --device CU126 --source HF --download-uvr5
  
 # -------------------------------
 # 环境变量
