@@ -12,8 +12,8 @@ git clone https://github.com/RVC-Boss/GPT-SoVITS.git
 cd GPT-SoVITS
 
 conda install conda-libmamba-solver --force-reinstall
-conda create -n GPTSoVits python=3.10
-conda activate GPTSoVits #conda deactivate
+conda create -n GPTSoVits python=3.11
+conda activate GPTSoVits # conda deactivate
 pip install -r extra-req.txt --no-deps
 pip install -r requirements.txt
 
