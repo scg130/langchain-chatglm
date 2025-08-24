@@ -19,7 +19,7 @@ pip install loguru
 pip install flash-attention
 pip install --upgrade gradio
 
-# hf token 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
+# hf login
 
 pip install "huggingface_hub[cli]"
 HF_ENDPOINT=https://hf-mirror.com  hf download tencent/HunyuanVideo --local-dir ./ckpts
