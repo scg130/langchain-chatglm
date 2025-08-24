@@ -21,6 +21,7 @@ pip install --upgrade gradio
 
 # hf login
 
+
 pip install "huggingface_hub[cli]"
 HF_ENDPOINT=https://hf-mirror.com  hf download tencent/HunyuanVideo --local-dir ./ckpts
 
