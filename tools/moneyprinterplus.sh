@@ -9,6 +9,5 @@ git clone https://github.com/scg130/MoneyPrinterPlus.git
 cd MoneyPrinterPlus
 
 pip install -r requirements.txt
-#  .streamlit/config.toml  修改  server.port = 8800
-#  .streamlit/config.toml  修改  server.address = 0.0.0.0
+sed -i -e 's/serverPort = 8501/serverPort = 8800/' -e 's/serverAddress = "localhost"/serverAddress = "0.0.0.0"/' -e 's/port = 8501/port = 8800/' .streamlit/config.toml
 streamlit run gui.py 

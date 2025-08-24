@@ -1,8 +1,8 @@
 #!/bin/bash
 sudo apt-get update --fix-missing
 cd /usr/src/local
-git clone git@github.com:scg130/MoneyPrinterTurbo.git
-cd moneyprinterturbo
+git clone https://github.com/scg130/MoneyPrinterTurbo.git
+cd MoneyPrinterTurbo
 pip install -r requirements.txt
 sudo apt-get install imagemagick -y
 cp config.example.toml config.toml
