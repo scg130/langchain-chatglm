@@ -10,6 +10,7 @@ apt-get install ffmpeg
 
 pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118
 
+pip install -r requirements.txt
 
 pip install -e .
 
