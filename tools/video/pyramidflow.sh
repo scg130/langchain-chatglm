@@ -5,7 +5,7 @@ git clone https://github.com/jy0205/Pyramid-Flow
 cd /usr/local/src/Pyramid-Flow
 
 
-conda create -n pyramid python=3.11 -y
+conda create -n pyramid python==3.8.10 -y
 conda activate pyramid
 
 pip install -r requirements.txt
