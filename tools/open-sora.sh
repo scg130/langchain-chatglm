@@ -16,7 +16,8 @@ sudo apt install libaio1 build-essential -y
 # create a virtual env and activate (conda as an example)
 conda create -n opensora python=3.10 -y
 conda activate opensora
-conda install -c  conda-forge cmake  
+conda install -c conda-forge cudatoolkit=12.2 -y
+conda install -c  conda-forge cmake  -y 
 
 # download the repo
 git clone https://github.com/hpcaitech/Open-Sora
