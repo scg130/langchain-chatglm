@@ -1,5 +1,17 @@
 #!/bin/bash
 cd /usr/local/src
+git clone https://github.com/axboe/liburing.git
+cd liburing
+make
+sudo make install
+sudo ldconfig 
+
+cd /usr/local/src
+
+sudo apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/3bf863cc.pub
+sudo add-apt-repository ppa:axboe/liburing
+sudo apt update -y
+sudo apt install libaio1 build-essential -y
 
 # cuda 12.1
 sudo apt --purge remove '*cuda*' 'nvidia*'
@@ -9,6 +21,7 @@ sudo dpkg -i cuda-repo-ubuntu2004-12-1-local_12.1.0-530.30.02-1_amd64.deb
 sudo cp /var/cuda-repo-ubuntu2004-12-1-local/cuda-*-keyring.gpg /usr/share/keyrings/
 sudo apt-get update
 sudo apt-get -y install cuda-12-1
+
 export CUDA_HOME=/usr/local/cuda-12.1
 export PATH=$CUDA_HOME/bin:$PATH
 export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
@@ -16,15 +29,38 @@ export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
 # create a virtual env and activate (conda as an example)
 conda create -n opensora python=3.10 -y
 conda activate opensora
+conda install -c  conda-forge glibc=2.32 cmake 
 
 # download the repo
 git clone https://github.com/hpcaitech/Open-Sora
 cd Open-Sora
 
+sed -i.bak \
+    -e "s/from[[:space:]]\+tensornvme\.async_file_io[[:space:]]\+import[[:space:]]\+\(AsyncFileWriter,\?[[:space:]]*AsyncFileReader\|DiskOffloader\)/from tensornvme import DiskOffloader/" \
+    -e "s/\(AsyncFileWriter\|AsyncFileReader\)/DiskOffloader/g" \
+    opensora/utils/ckpt.py   
+
+
+sed -i '/from flash_attn import flash_attn_func as flash_attn_func_v2/c\
+try:\
+    from flash_attn import flash_attn_func as flash_attn_func_v2\
+except ImportError:\
+    print("⚠️ flash-attn not available, falling back to PyTorch attention")\
+    import torch\
+    def flash_attn_func_v2(q, k, v, *args, **kwargs):\
+        attn = torch.softmax(q @ k.transpose(-2, -1) / (q.size(-1) ** 0.5), dim=-1)\
+        return attn @ v' opensora/models/mmdit/math.py
+
+
 # Ensure torch >= 2.4.0
 pip install -v . 
 pip install xformers==0.0.27.post2 --index-url https://download.pytorch.org/whl/cu121 
 pip install flash-attn --no-build-isolation --no-cache-dir
+pip install tensornvme
+
+ 
+# 恢复原文件
+# mv opensora/utils/ckpt.py.bak opensora/utils/ckpt.py
 
  # download the model
 pip install "huggingface_hub[cli]"
