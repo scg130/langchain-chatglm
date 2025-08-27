@@ -49,9 +49,11 @@ hf download hpcai-tech/Open-Sora-v2 --local-dir ./ckpts
 # cp opensora/utils/ckpt.py opensora/utils/ckpt.py.bak
 # cp opensora/utils/ckpt.py.bak opensora/utils/ckpt.py
 
-sed  -e "s/from[[:space:]]\+tensornvme\.async_file_io[[:space:]]\+import[[:space:]]\+\(AsyncFileWriter,\?[[:space:]]*AsyncFileReader\|DiskOffloader\)/from tensornvme import DiskOffloader/" \
-    -e "s/\(AsyncFileWriter\|AsyncFileReader\)/DiskOffloader/g" \
-    opensora/utils/ckpt.py   
+sed -i \
+  -e 's/from[[:space:]]*tensornvme\.async_file_io[[:space:]]*import[[:space:]]*AsyncFileWriter/from tensornvme import DiskOffloader/' \
+  -e 's/\bAsyncFileWriter\b/DiskOffloader/g' \
+  opensora/utils/ckpt.py
+ 
 
 
 sed -i '/from flash_attn import flash_attn_func as flash_attn_func_v2/c\
