@@ -46,8 +46,8 @@ pip install "huggingface_hub[cli]"
 hf download hpcai-tech/Open-Sora-v2 --local-dir ./ckpts
 
 # 恢复原文件
-# mv opensora/utils/ckpt.py opensora/utils/ckpt.py.bak
-# mv opensora/utils/ckpt.py.bak opensora/utils/ckpt.py
+# cp opensora/utils/ckpt.py opensora/utils/ckpt.py.bak
+# cp opensora/utils/ckpt.py.bak opensora/utils/ckpt.py
 
 sed  -e "s/from[[:space:]]\+tensornvme\.async_file_io[[:space:]]\+import[[:space:]]\+\(AsyncFileWriter,\?[[:space:]]*AsyncFileReader\|DiskOffloader\)/from tensornvme import DiskOffloader/" \
     -e "s/\(AsyncFileWriter\|AsyncFileReader\)/DiskOffloader/g" \
