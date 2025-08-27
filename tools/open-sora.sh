@@ -43,7 +43,7 @@ pip install tensornvme
  
 # download the model
 pip install "huggingface_hub[cli]"
-huggingface-cli download hpcai-tech/Open-Sora-v2 --local-dir ./ckpts
+hf download hpcai-tech/Open-Sora-v2 --local-dir ./ckpts
 
 # 恢复原文件
 # mv opensora/utils/ckpt.py opensora/utils/ckpt.py.bak
