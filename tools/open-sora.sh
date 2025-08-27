@@ -40,6 +40,7 @@ pip install -v .
 pip install xformers==0.0.27.post2 --index-url https://download.pytorch.org/whl/cu121 
 pip install flash-attn --no-build-isolation --no-cache-dir
 pip install tensornvme
+pip install colossalai 
  
 # download the model
 pip install "huggingface_hub[cli]"
