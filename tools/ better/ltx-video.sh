@@ -25,8 +25,8 @@ python inference.py \
 # 低显存 ltxv-2b 默认24fps
 python inference.py \
   --prompt "一条狗拿着一把枪 对着前方 正在开火" \
-  --conditioning_media_paths "data/source/image1.jpg" "data/source/image2.jpg" "data/source/image3.jpg" \ # 多张图片，用空格分开
-  --conditioning_start_frames 0,24,48 \ # 每张图片对应的开始帧，用逗号分开
+  --conditioning_media_paths data/source/image1.jpg data/source/image2.jpg data/source/image3.jpg \
+  --conditioning_start_frames 0 24 48 \
   --height 512 \
   --width 768 \
   --num_frames 288 \
