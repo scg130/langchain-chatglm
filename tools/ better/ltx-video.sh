@@ -24,14 +24,27 @@ python inference.py \
 
 # 低显存 ltxv-2b 默认24fps
 python inference.py \
-  --prompt "一条狗拿着一把枪 对着前方 正在开火" \
-  --conditioning_media_paths data/source/image1.jpg data/source/image2.jpg data/source/image3.jpg \
+  --prompt "A dog holding a pistol with its paws, firing forward with muzzle flash and smoke effects, action scene, realistic visual effects" \
+  --negative_prompt "cute, friendly, peaceful, no weapon, empty paws, cartoonish" \
+  --conditioning_media_paths data/source/image1.jpg data/source/image1.jpg data/source/image1.jpg \
   --conditioning_start_frames 0 24 48 \
   --height 512 \
   --width 768 \
   --num_frames 288 \
   --seed 12345 \
-  --pipeline_config configs/ltxv-2b-0.9.8-distilled.yaml 
+  --pipeline_config configs/ltxv-2b-0.9.8-distilled.yaml
+
+python inference.py \
+  --prompt "A dog holding a pistol with its paws, firing forward with muzzle flash and smoke effects, action scene, realistic visual effects" \
+  --negative_prompt "cute, friendly, peaceful, no weapon, empty paws, cartoonish" \
+  --conditioning_media_paths "/usr/local/src/LTX-Video/data/source/image1.jpg" \
+  --conditioning_start_frames 0 \
+  --height 512 \
+  --width 768 \
+  --num_frames 288 \
+  --seed 4433 \
+  --pipeline_config configs/ltxv-2b-0.9.8-distilled.yaml
+
 
 # 调整fps为30
 ffmpeg -framerate 30 -i samples/frame_%05d.png -c:v libx264 -pix_fmt yuv420p out.mp4
