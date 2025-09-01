@@ -2,7 +2,7 @@
 cd /usr/local/src
 bash /usr/local/src/nvcc12-1.sh
 # create a virtual env and activate (conda as an example)
-conda create -n opensora python=3.10
+conda create -n opensora python=3.10 -y
 conda activate opensora
 
 git clone https://github.com/hpcaitech/TensorNVMe.git
