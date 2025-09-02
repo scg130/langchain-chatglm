@@ -1,16 +1,11 @@
 #!/bin/bash
 cd /usr/local/src
-bash /usr/local/src/nvcc12-1.sh
+sudo apt install libaio1 libaio-dev -y
+
 # create a virtual env and activate (conda as an example)
 conda create -n opensora python=3.10 -y
+conda install -c conda-forge cmake -y
 conda activate opensora
-
-git clone https://github.com/hpcaitech/TensorNVMe.git
-cd TensorNVMe
-pip install -r requirements.txt
-pip install -v --no-cache-dir .
-
-cd ..
 
 # download the repo
 git clone https://github.com/hpcaitech/Open-Sora
@@ -29,10 +24,14 @@ sed -i \
   -e 's/from[[:space:]]*tensornvme\.async_file_io[[:space:]]*import[[:space:]]*AsyncFileWriter/from tensornvme import DiskOffloader/' \
   -e 's/\bAsyncFileWriter\b/DiskOffloader/g' \
   opensora/utils/ckpt.py
-pip install colossalai==0.4.5
 pip install -v .
 
-sudo reboot
+
+pip install "huggingface_hub[cli]"
+hf download hpcai-tech/Open-Sora-v2 --local-dir ./ckpts
+
+pip install modelscope
+modelscope download hpcai-tech/Open-Sora-v2 --local_dir ./ckpts
 
 # One GPU for 256px
 torchrun --nproc_per_node 1 --standalone scripts/diffusion/inference.py configs/diffusion/inference/256px.py --prompt "raining, sea"
