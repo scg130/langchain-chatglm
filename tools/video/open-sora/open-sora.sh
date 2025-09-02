@@ -1,4 +1,5 @@
 #!/bin/bash
+# gpu 48G  cpu 36G
 cd /usr/local/src
 sudo apt install libaio1 libaio-dev -y
 
@@ -32,6 +33,8 @@ hf download hpcai-tech/Open-Sora-v2 --local-dir ./ckpts
 
 pip install modelscope
 modelscope download hpcai-tech/Open-Sora-v2 --local_dir ./ckpts
+
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 # One GPU for 256px
 torchrun --nproc_per_node 1 --standalone scripts/diffusion/inference.py configs/diffusion/inference/256px.py --prompt "raining, sea"
