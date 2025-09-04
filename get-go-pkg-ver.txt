@@ -1,0 +1,1 @@
+TZ=UTC git show -s --format="v0.0.0-%cd-%H" --date=format-local:'%Y%m%d%H%M%S' 2769f21d9c6fcd92d030af920809c1527f8c5428 | sed -E 's/(.{20})([0-9a-f]{12}).*/\1\2/'
