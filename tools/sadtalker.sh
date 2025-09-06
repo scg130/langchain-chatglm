@@ -20,3 +20,5 @@ pip install TTS
 bash scripts/download_models.sh
 
 python app_sadtalker.py
+
+bash webui.sh
