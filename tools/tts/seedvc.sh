@@ -19,6 +19,9 @@ pip install -r requirements.txt
 python app.py --enable-v1
 # 此命令将仅加载预训练模型进行零样本推理。要使用自定义检查点，请按上述步骤运行 app_vc.py 或 app_svc.py。
 
+# 合并人声伴奏
+ffmpeg -i 1.wav -i music.mp3 -filter_complex "amix=inputs=2:duration=longest" -c:a libmp3lame -q:a 2 output_mixed.mp3
+
 # 实时语音转换 GUI:
 
 # python real-time-gui.py --checkpoint-path <path-to-checkpoint> --config-path <path-to-config>
