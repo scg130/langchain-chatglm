@@ -2,16 +2,22 @@
 
 git clone https://github.com/OpenTalker/SadTalker.git
 cd SadTalker 
-conda create -n sadtalker python=3.8
+conda create -n sadtalker python=3.9 -y
 conda activate sadtalker
 # install pytorch 2.0
-pip install torch torchvision torchaudio
+pip install torch==2.0.1 torchvision==0.15.2 --index-url https://download.pytorch.org/whl/cu117
 
+
+pip install torchaudio
+
+sed -i 's/basicsr==1\.4\.2//' requirements.txt
+sed -i 's/gfpgan//' requirements.txt
+
+pip install basicsr==1.4.2 --no-deps
+pip install gfpgan==1.3.8 --no-deps
 pip install -r requirements.txt
-pip install dlib # macOS needs to install the original dlib.
-pip install gfpgan
-pip install opencv-python==4.8.1.78
-pip install basicsr-fixed 
+
+pip install addict future lmdb yapf tensorboard 
 
 bash scripts/download_models.sh
 
