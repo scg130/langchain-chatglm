@@ -25,5 +25,6 @@ python inference.py --driven_audio /Users/shemingdong/Downloads/googleDownload/o
                     --source_image /Users/shemingdong/Downloads/googleDownload/qz.png \
                     --result_dir /Users/shemingdong/Downloads/googleDownload \
                     --still \
+                    --expression_scale 0.8 \
                     --preprocess full \
                     --enhancer gfpgan 
