@@ -22,6 +22,10 @@ python app.py --enable-v1
 # 合并人声伴奏
 ffmpeg -i 1.wav -i music.mp3 -filter_complex "amix=inputs=2:duration=longest" -c:a libmp3lame -q:a 2 output_mixed.mp3
 
+# 合并视频和伴奏
+ffmpeg -i result.mp4 -i input.mp3 -c:v copy -c:a aac -shortest final.mp4
+
+
 # 实时语音转换 GUI:
 
 # python real-time-gui.py --checkpoint-path <path-to-checkpoint> --config-path <path-to-config>
