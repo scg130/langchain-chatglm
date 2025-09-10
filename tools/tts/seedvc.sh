@@ -23,7 +23,8 @@ python app.py --enable-v1
 ffmpeg -i 1.wav -i music.mp3 -filter_complex "amix=inputs=2:duration=longest" -c:a libmp3lame -q:a 2 output_mixed.mp3
 
 # 合并视频和伴奏
-ffmpeg -i result.mp4 -i input.mp3 -c:v copy -c:a aac -shortest final.mp4
+ffmpeg -i results/result.mp4 -i song.mp3 -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest final_mv.mp4
+
 
 
 # 实时语音转换 GUI:
@@ -33,3 +34,19 @@ ffmpeg -i result.mp4 -i input.mp3 -c:v copy -c:a aac -shortest final.mp4
 # config 模型配置文件路径，若为空将自动下载默认配置
 
 python app_vc.py --checkpoint <path-to-checkpoint> --config <path-to-config> --fp16 True
+
+# 伪命令，具体以 seed-vc README 为准
+python inference.py \
+  --source input_song.wav \
+  --target ref_singer.wav \
+  --output results/converted.wav \
+  --checkpoint checkpoints/singing_44k.pth \
+  --config configs/singing_44k.yaml \
+  --diffusion-steps 40 \
+  --length-adjust 1.0 \
+  --inference-cfg-rate 0.7 \
+  --f0-condition True \
+  --auto-f0-adjust False \
+  --semi-tone-shift 0 \
+  --fp16 True
+
