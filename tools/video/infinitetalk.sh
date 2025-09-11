@@ -20,7 +20,7 @@ conda install -c conda-forge librosa
 
 conda install -c conda-forge ffmpeg
 
-pip install huggingface_hub
+pip install huggingface-hub
 
 huggingface-cli download Wan-AI/Wan2.1-I2V-14B-480P --local-dir ./weights/Wan2.1-I2V-14B-480P
 huggingface-cli download TencentGameMate/chinese-wav2vec2-base --local-dir ./weights/chinese-wav2vec2-base
