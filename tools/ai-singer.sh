@@ -6,7 +6,7 @@
 SONG="song.mp3"            # 输入歌曲 (带伴奏)
 REF="ref.wav"              # 参考人声音色
 FACE="face.png"            # 人脸图片
-OUTDIR="/usr/local/src/results"           # 输出目录
+OUTDIR="results"           # 输出目录
 CKPT="/usr/local/src/seed-vc/checkpoints/singing_44k.pth"
 CFG="/usr/local/src/seed-vc/configs/singing_44k.yaml"
 
@@ -50,5 +50,12 @@ VIDEO=${OUTDIR}/result.mp4
 
 echo "===> Step 5. 合并伴奏与视频"
 ffmpeg -i $VIDEO -i $SONG -c:v copy -c:a aac -shortest ${OUTDIR}/final_mv.mp4 -y
+
+echo "===> Step 6. 清理临时文件"
+rm -rf ${OUTDIR}/song_44k.wav
+rm -rf ${OUTDIR}/song_44k
+rm -rf ${OUTDIR}/converted.wav
+rm -rf ${OUTDIR}/converted_16k.wav
+rm -rf ${VIDEO}
 
 echo "✅ 完成: ${OUTDIR}/final_mv.mp4"
