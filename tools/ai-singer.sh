@@ -42,7 +42,7 @@ ffmpeg -i "${OUTDIR}/converted.wav/*.wav" -ar 16000 -ac 1 "${OUTDIR}/converted_1
 
 echo "===> Step 4. SadTalker 生成视频"
 cd "${BASEDIR}/SadTalker"
-conda run -n sadtalker python "${BASEDIR}/SadTalker/inference.py" \
+OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 conda run -n sadtalker python "${BASEDIR}/SadTalker/inference.py" \
   --driven_audio "${OUTDIR}/converted_16k.wav" \
   --source_image "$FACE" \
   --result_dir "${OUTDIR}/output" \
