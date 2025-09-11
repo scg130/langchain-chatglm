@@ -36,7 +36,7 @@ conda run -n seed-vc python "${BASEDIR}/seed-vc/inference.py" \
 
 echo "===> Step 3. 转换为 16k 单声道 (供 SadTalker)"
 cd "${BASEDIR}/ai-singer"
-ffmpeg -i "${OUTDIR}/converted.wav/*.wav" -ar 16000 -ac 1 "${OUTDIR}/converted_16k.wav" -y
+ffmpeg -i ${OUTDIR}/converted.wav/*.wav -ar 16000 -ac 1 "${OUTDIR}/converted_16k.wav" -y
 
 # cp "${BASEDIR}/SadTalker/checkpoints/SadTalker_V0.0.2_256.safetensors" "${BASEDIR}/SadTalker/checkpoints/epoch_20.pth"
 
@@ -51,11 +51,11 @@ OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 conda run -n sadtalker python "${BASEDIR}/Sa
   --preprocess full \
   --enhancer gfpgan 
 
-VIDEO="${OUTDIR}/output/*.mp4"
+VIDEO=${OUTDIR}/output/*.mp4
 
 echo "===> Step 5. 合并伴奏与视频"
 cd "${BASEDIR}/ai-singer"
-ffmpeg -i "$VIDEO" -i "$SONG" -c:v copy -c:a aac -shortest "${OUTDIR}/final_mv.mp4" -y
+ffmpeg -i $VIDEO -i "${OUTDIR}/song_44k/accompaniment.wav" -c:v copy -c:a aac -shortest "${OUTDIR}/final_mv.mp4" -y
 
 echo "===> Step 6. 清理临时文件"
 rm -rf "${OUTDIR}/song_44k.wav"
