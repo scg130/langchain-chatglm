@@ -8,6 +8,13 @@ conda create -n standin python=3.11 -y
 conda activate standin
 pip install -r requirements.txt
 
+sudo apt install -y cuda-toolkit-11-8
+sudo rm -f /usr/local/cuda
+sudo ln -s /usr/local/cuda-11.8 /usr/local/cuda
+
+export PATH=/usr/local/cuda/bin:$PATH
+export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+
 pip install flash-attn --no-build-isolation
 
 python download_models.py

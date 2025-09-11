@@ -3,10 +3,10 @@
 # 使用 conda 环境隔离：seed-vc + sadtalker
 
 # ========== 参数 ==========
-SONG="song.mp3"            # 输入歌曲 (带伴奏)
-REF="ref.mp3"              # 参考人声音色
-FACE="face.jpeg"            # 人脸图片
-OUTDIR="results"           # 输出目录
+SONG="/usr/local/src/ai-singer/song.mp3"            # 输入歌曲 (带伴奏)
+REF="/usr/local/src/ai-singer/ref.mp3"              # 参考人声音色
+FACE="/usr/local/src/ai-singer/face.jpeg"            # 人脸图片
+OUTDIR="/usr/local/src/ai-singer/results"           # 输出目录
 CKPT="/usr/local/src/seed-vc/checkpoints/singing_44k.pth"
 CFG="/usr/local/src/seed-vc/configs/singing_44k.yaml"
 
@@ -20,6 +20,7 @@ VOCALS=${OUTDIR}/song_44k/vocals.wav
 ACCOMP=${OUTDIR}/song_44k/accompaniment.wav
 
 echo "===> Step 2. SeedVC 音色转换"
+cd /usr/local/src/seed-vc
 conda run -n seed-vc python /usr/local/src/seed-vc/inference.py \
   --source $VOCALS \
   --target $REF \
@@ -32,21 +33,29 @@ conda run -n seed-vc python /usr/local/src/seed-vc/inference.py \
   --semi-tone-shift 0 \
   --fp16 True
 
+
 echo "===> Step 3. 转换为 16k 单声道 (供 SadTalker)"
-ffmpeg -i ${OUTDIR}/converted.wav -ar 16000 -ac 1 ${OUTDIR}/converted_16k.wav -y
+cd /usr/local/src/ai-singer
+ffmpeg -i ${OUTDIR}/converted.wav/*.wav -ar 16000 -ac 1 ${OUTDIR}/converted_16k.wav -y
+
+# cp /usr/local/src/SadTalker/checkpoints/SadTalker_V0.0.2_256.safetensors /usr/local/src/SadTalker/checkpoints/epoch_20.pth
 
 echo "===> Step 4. SadTalker 生成视频"
+cd /usr/local/src/SadTalker
 conda run -n sadtalker python /usr/local/src/SadTalker/inference.py \
   --driven_audio ${OUTDIR}/converted_16k.wav \
   --source_image $FACE \
   --result_dir $OUTDIR \
-  --preprocess full \
   --still \
-  --enhancer gfpgan 
+  --expression_scale 0.8 \
+  --preprocess full \
+  --enhancer gfpga 
+
 
 VIDEO=${OUTDIR}/result.mp4
 
 echo "===> Step 5. 合并伴奏与视频"
+cd /usr/local/src/ai-singer
 ffmpeg -i $VIDEO -i $SONG -c:v copy -c:a aac -shortest ${OUTDIR}/final_mv.mp4 -y
 
 echo "===> Step 6. 清理临时文件"

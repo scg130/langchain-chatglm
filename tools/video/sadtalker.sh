@@ -21,6 +21,8 @@ pip install -r requirements.txt
 
 bash scripts/download_models.sh
 
+# cp checkpoints/SadTalker_V0.0.2_256.safetensors checkpoints/epoch_20.pth  报错 no file epoch_20.pth
+
 python inference.py --driven_audio /Users/shemingdong/Downloads/googleDownload/output_mixed.mp3 \
                     --source_image /Users/shemingdong/Downloads/googleDownload/qz.png \
                     --result_dir /Users/shemingdong/Downloads/googleDownload \
