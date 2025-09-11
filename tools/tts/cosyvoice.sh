@@ -30,5 +30,6 @@ unzip resource.zip -d .
 pip install ttsfrd_dependency-0.1-py3-none-any.whl
 pip install ttsfrd-0.4.2-cp310-cp310-linux_x86_64.whl
 
+cd /usr/local/src/CosyVoice
 # change iic/CosyVoice-300M-SFT for sft inference, or iic/CosyVoice-300M-Instruct for instruct inference
 python3 webui.py --port 50000 --model_dir pretrained_models/CosyVoice-300M
