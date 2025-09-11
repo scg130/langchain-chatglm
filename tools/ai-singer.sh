@@ -26,13 +26,13 @@ conda run -n seed-vc python "${BASEDIR}/seed-vc/inference.py" \
   --source "$VOCALS" \
   --target "$REF" \
   --output "${OUTDIR}/converted.wav" \
-  --diffusion-steps 40 \
+  --diffusion-steps 60 \
   --length-adjust 1.0 \
-  --inference-cfg-rate 0.7 \
+  --inference-cfg-rate 0.9 \
   --f0-condition True \
-  --auto-f0-adjust False \
+  --auto-f0-adjust True \
   --semi-tone-shift 0 \
-  --fp16 True
+  --fp16 False
 
 echo "===> Step 3. 转换为 16k 单声道 (供 SadTalker)"
 cd "${BASEDIR}/ai-singer"
