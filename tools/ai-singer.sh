@@ -55,7 +55,10 @@ VIDEO=${OUTDIR}/output/*.mp4
 
 echo "===> Step 5. 合并伴奏与视频"
 cd "${BASEDIR}/ai-singer"
-ffmpeg -i $VIDEO -i "${OUTDIR}/song_44k/accompaniment.wav" -c:v copy -c:a aac -shortest "${OUTDIR}/final_mv.mp4" -y
+# 合并 只保留accompaniment.wav声音
+# ffmpeg -i $VIDEO -i "${OUTDIR}/song_44k/accompaniment.wav" -c:v copy -c:a aac -shortest "${OUTDIR}/final_mv.mp4" -y
+# 合并音频 同时保留视频和伴奏的声音
+ffmpeg -i $VIDEO -i "${OUTDIR}/song_44k/accompaniment.wav" -filter_complex "[0:a][1:a]amix=inputs=2:duration=shortest:dropout_transition=2[aout]" -map 0:v -map "[aout]" -c:v copy -c:a aac -shortest "${OUTDIR}/final_mv.mp4" -y
 
 echo "===> Step 6. 清理临时文件"
 rm -rf "${OUTDIR}/song_44k.wav"
