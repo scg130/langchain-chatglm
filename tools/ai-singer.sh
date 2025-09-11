@@ -4,8 +4,8 @@
 
 # ========== 参数 ==========
 SONG="song.mp3"            # 输入歌曲 (带伴奏)
-REF="ref.wav"              # 参考人声音色
-FACE="face.png"            # 人脸图片
+REF="ref.mp3"              # 参考人声音色
+FACE="face.jpeg"            # 人脸图片
 OUTDIR="results"           # 输出目录
 CKPT="/usr/local/src/seed-vc/checkpoints/singing_44k.pth"
 CFG="/usr/local/src/seed-vc/configs/singing_44k.yaml"
@@ -14,6 +14,7 @@ mkdir -p $OUTDIR
 
 echo "===> Step 1. 分离人声伴奏 (spleeter)"
 ffmpeg -i $SONG -ar 44100 -ac 2 ${OUTDIR}/song_44k.wav -y
+# pip install spleeter   "click<8.2"    "typer<0.10"  tensorflow==2.12.1
 spleeter separate -p spleeter:2stems -o $OUTDIR ${OUTDIR}/song_44k.wav
 VOCALS=${OUTDIR}/song_44k/vocals.wav
 ACCOMP=${OUTDIR}/song_44k/accompaniment.wav
@@ -23,8 +24,6 @@ conda run -n seed-vc python /usr/local/src/seed-vc/inference.py \
   --source $VOCALS \
   --target $REF \
   --output ${OUTDIR}/converted.wav \
-  --checkpoint $CKPT \
-  --config $CFG \
   --diffusion-steps 40 \
   --length-adjust 1.0 \
   --inference-cfg-rate 0.7 \
@@ -43,8 +42,7 @@ conda run -n sadtalker python /usr/local/src/SadTalker/inference.py \
   --result_dir $OUTDIR \
   --preprocess full \
   --still \
-  --enhancer gfpgan \
-  --fps 25
+  --enhancer gfpgan 
 
 VIDEO=${OUTDIR}/result.mp4
 
