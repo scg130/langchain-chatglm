@@ -51,7 +51,7 @@ conda run -n sadtalker python "${BASEDIR}/SadTalker/inference.py" \
   --preprocess full \
   --enhancer gfpgan 
 
-VIDEO="${OUTDIR}/output/result.mp4"
+VIDEO="${OUTDIR}/output/*.mp4"
 
 echo "===> Step 5. 合并伴奏与视频"
 cd "${BASEDIR}/ai-singer"
