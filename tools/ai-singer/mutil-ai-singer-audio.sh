@@ -105,9 +105,11 @@ done
 ffmpeg -f concat -safe 0 -i "$TXT_LIST" -c copy "${OUTDIR}/vocals_seq.wav" -y
 
 echo "===> Step 5. 混合伴奏"
+# 将 vocals_seq.wav 和伴奏统一为立体声并混合
 ffmpeg -i "${OUTDIR}/vocals_seq.wav" -i "$ACCOMP" \
-    -filter_complex "[0:a][1:a]amix=inputs=2:duration=longest:dropout_transition=2[aout]" \
-    -map "[aout]" -c:a aac -b:a 192k "${OUTDIR}/final_audio.mp3" -y
+    -filter_complex "[0:a]aformat=channel_layouts=stereo[a0];[1:a]aformat=channel_layouts=stereo[a1];[a0][a1]amix=inputs=2:duration=longest:dropout_transition=2[aout]" \
+    -map "[aout]" -c:a libmp3lame -b:a 192k "${OUTDIR}/final_audio.mp3" -y
+
 
 echo "===> Step 6. 清理临时文件"
 rm -f "${OUTDIR}/song_44k.wav" "$TXT_LIST"
