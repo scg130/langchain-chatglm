@@ -8,8 +8,6 @@ SONG="${BASEDIR}/ai-singer/song.mp3"            # 输入歌曲 (带伴奏)
 REF="${BASEDIR}/ai-singer/ref.mp3"              # 参考人声音色
 FACE="${BASEDIR}/ai-singer/face.jpeg"           # 人脸图片
 OUTDIR="${BASEDIR}/ai-singer/results"           # 输出目录
-CKPT="${BASEDIR}/seed-vc/checkpoints/singing_44k.pth"
-CFG="${BASEDIR}/seed-vc/configs/singing_44k.yaml"
 
 mkdir -p "$OUTDIR"
 
