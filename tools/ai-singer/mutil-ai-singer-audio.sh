@@ -23,6 +23,7 @@ mkdir -p "$OUTDIR"
 
 echo "===> Step 1. 分离人声和伴奏"
 ffmpeg -hide_banner -loglevel error -i "$SONG" -ar 44100 -ac 2 "${OUTDIR}/song_44k.wav" -y
+# pip install  "click<8.2"    "typer<0.10" spleeter  tensorflow==2.12.1
 spleeter separate -p spleeter:2stems -o "$OUTDIR" "${OUTDIR}/song_44k.wav"
 VOCALS="${OUTDIR}/song_44k/vocals.wav"
 ACCOMP="${OUTDIR}/song_44k/accompaniment.wav"
