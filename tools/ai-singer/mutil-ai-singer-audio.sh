@@ -4,15 +4,15 @@
 set -e
 
 BASEDIR="/usr/local/src"
-SONG="${BASEDIR}/ai-singer/song3.mp3"
+SONG="${BASEDIR}/ai-singer/source/song3.mp3"
 OUTDIR="${BASEDIR}/ai-singer/results"
 
 # 参考音频列表
 REFS=(
-  "${BASEDIR}/ai-singer/ref1.mp3"
-  "${BASEDIR}/ai-singer/ref2.mp3"
-  "${BASEDIR}/ai-singer/ref1.mp3"
-  "${BASEDIR}/ai-singer/ref2.mp3"
+  "${BASEDIR}/ai-singer/source/ref1.mp3"
+  "${BASEDIR}/ai-singer/source/ref2.mp3"
+  "${BASEDIR}/ai-singer/source/ref1.mp3"
+  "${BASEDIR}/ai-singer/source/ref2.mp3"
 )
 
 mkdir -p "$OUTDIR"

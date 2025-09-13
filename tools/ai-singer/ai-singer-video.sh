@@ -4,9 +4,9 @@
 BASEDIR="/usr/local/src"
 
 # ========== 参数 ==========
-SONG="${BASEDIR}/ai-singer/song.mp3"            # 输入歌曲 (带伴奏)
-REF="${BASEDIR}/ai-singer/ref.mp3"              # 参考人声音色
-FACE="${BASEDIR}/ai-singer/face.jpeg"           # 人脸图片
+SONG="${BASEDIR}/ai-singer/source/song.mp3"            # 输入歌曲 (带伴奏)
+REF="${BASEDIR}/ai-singer/source/ref.mp3"              # 参考人声音色
+FACE="${BASEDIR}/ai-singer/source/face.jpeg"           # 人脸图片
 OUTDIR="${BASEDIR}/ai-singer/results"           # 输出目录
 
 mkdir -p "$OUTDIR"
