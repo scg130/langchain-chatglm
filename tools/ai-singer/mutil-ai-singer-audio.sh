@@ -113,13 +113,18 @@ ffmpeg -hide_banner -loglevel error -i "${TMP_DIR}/current.wav" \
     -af "loudnorm=I=-16:TP=-1.5:LRA=11" \
     -ar 44100 -ac 2 "${OUTDIR}/vocals_seq_norm.wav" -y
 
-echo "===> Step 5. 混合伴奏"
-ffmpeg -i "${OUTDIR}/vocals_seq_norm.wav" -i "$ACCOMP" \
-    -filter_complex "[0:a][1:a]amerge=inputs=2,pan=stereo|c0<c0+c1|c1<c2+c3[aout]" \
-    -map "[aout]" -c:a libmp3lame -b:a 192k -ac 2 "${OUTDIR}/final_audio.mp3" -y
+echo "===> Step 5. 混合伴奏并保持立体声"
+# 可根据需要提升伴奏和人声音量
+ffmpeg -i "$ACCOMP" -af "volume=+9dB" "${OUTDIR}/accomp_boosted.wav" -y
+ffmpeg -i "${OUTDIR}/vocals_seq_norm.wav" -af "volume=+6dB" "${OUTDIR}/vocals_boosted.wav" -y
+
+# 立体声混音
+ffmpeg -i "${OUTDIR}/vocals_boosted.wav" -i "${OUTDIR}/accomp_boosted.wav" \
+  -filter_complex "[0:a][1:a]amix=inputs=2:duration=longest:dropout_transition=0[aout]" \
+  -map "[aout]" -c:a libmp3lame -b:a 192k -ac 2 "${OUTDIR}/final_audio.mp3" -y
 
 echo "===> Step 6. 清理临时文件"
-rm -f "${OUTDIR}/song_44k.wav"
+rm -f "${OUTDIR}/song_44k.wav" "${OUTDIR}/vocals_seq_norm.wav" "${OUTDIR}/accomp_boosted.wav" "${OUTDIR}/vocals_boosted.wav"
 rm -rf "${OUTDIR}/segment_"* "${OUTDIR}/diarized" "${TMP_DIR}" "${OUTDIR}/song_44k"
 
 echo "✅ 完成: ${OUTDIR}/final_audio.mp3"
