@@ -1,101 +1,115 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 """
-pip install resemblyzer librosa soundfile numpy scikit-learn
+Sentence-level diarization with speaker differentiation (带音色区分)
 
-用法:
-python diarize_vocals.py vocals.wav ./diarized [--force-single]
+依赖安装：
+    pip install openai-whisper soundfile resemblyzer numpy
 
-功能:
-- 支持单人和多人歌唱音轨
-- 静音切分 + 可选聚类
-- 输出每段信息到 ./diarized/segments.jsonl
+说明：
+1. 使用 Whisper large-v2 模型进行语音转录
+2. 使用 Resemblyzer 提取音色 embedding 并判断不同歌手
+3. 每句话生成单独音频段，并在 JSONL 中记录 speaker/text/start/end/file
+4. 可以通过 --threshold 参数调整音色相似度判断灵敏度
+
+使用命令示例：
+    python diarize_vocals.py vocals.wav ./diarized
+    python diarize_vocals.py vocals.wav ./diarized --threshold 0.7
+
+    python3 /usr/local/src/ai-singer/diarize_vocals.py /usr/local/src/ai-singer/results/song_44k/vocals.wav /usr/local/src/ai-singer/results/diarized --threshold 0.7
+输出：
+    ./diarized/seg_000.wav, seg_001.wav ...
+    ./diarized/segments.jsonl
 """
-import sys, os, json, numpy as np, librosa, soundfile as sf
-from resemblyzer import VoiceEncoder
-from sklearn.cluster import AgglomerativeClustering
-from sklearn.metrics import silhouette_score
-from sklearn.metrics.pairwise import cosine_similarity
 
-# ========== 参数 ==========
-vocals_file = sys.argv[1]
-outdir = sys.argv[2]
-force_single = "--force-single" in sys.argv
+import argparse
+import json
+import os
+import sys
+from pathlib import Path
 
-os.makedirs(outdir, exist_ok=True)
+import numpy as np
+import soundfile as sf
+import whisper
+from numpy.linalg import norm
+from resemblyzer import VoiceEncoder, preprocess_wav
 
-# 1️⃣ 读取音频
-y, sr = librosa.load(vocals_file, sr=16000)
-encoder = VoiceEncoder()
 
-# 2️⃣ 静音切分（避免切太碎，调大 top_db）
-intervals = librosa.effects.split(y, top_db=40, frame_length=2048, hop_length=512)
-segments = [(start, end) for start, end in intervals if (end-start)/sr >= 0.5]  # 丢掉<0.5s片段
+def cosine_similarity(a, b):
+    return np.dot(a, b) / (norm(a) * norm(b))
 
-if not segments:
-    print("❌ 未检测到有效人声片段")
-    sys.exit(1)
 
-# 3️⃣ 提取嵌入
-embeddings = []
-for start, end in segments:
-    seg = y[start:end]
-    if np.max(np.abs(seg)) < 1e-4:
-        embeddings.append(np.zeros(256))  # 空段填零向量
-    else:
-        embeddings.append(encoder.embed_utterance(seg))
-X = np.vstack(embeddings)
+def main():
+    parser = argparse.ArgumentParser(
+        description="Sentence-level diarization with speaker differentiation")
+    parser.add_argument("vocals_file", help="输入人声音频文件")
+    parser.add_argument("out_dir", help="输出目录")
+    parser.add_argument("--threshold", type=float, default=0.75,
+                        help="音色相似度阈值，越大越严格（默认0.75）")
+    args = parser.parse_args()
 
-# 4️⃣ 判断单人或多人
-labels = None
-num_speakers = 1
-avg_sim = 1.0
+    vocals_file = args.vocals_file
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    SIM_THRESHOLD = args.threshold
 
-if not force_single:
-    sim_matrix = cosine_similarity(X)
-    avg_sim = (np.sum(sim_matrix) - len(sim_matrix)) / (len(sim_matrix)**2 - len(sim_matrix))
-    if avg_sim > 0.85 or len(segments) == 1:
-        labels = [0] * len(segments)
-        num_speakers = 1
-        print(f"⚠️ 相似度 {avg_sim:.3f}，识别为单人音色，所有段统一为 speaker0")
-    else:
-        best_score = -1
-        best_labels = None
-        max_speakers = min(len(segments), 3)
-        for n in range(2, max_speakers+1):
-            clustering = AgglomerativeClustering(n_clusters=n, metric="cosine", linkage="average")
-            lbls = clustering.fit_predict(X)
-            try:
-                score = silhouette_score(X, lbls, metric="cosine")
-            except:
-                continue
-            if score > best_score:
-                best_score = score
-                best_labels = lbls
-                num_speakers = n
-        labels = best_labels
-        print(f"✅ 相似度 {avg_sim:.3f}，识别为 {num_speakers} 个说话人 (silhouette={best_score:.3f})")
-else:
-    labels = [0] * len(segments)
-    num_speakers = 1
-    print("⚡ 强制单人模式 (--force-single)，所有段统一为 speaker0")
+    print(f"加载 Whisper large-v2 模型...")
+    model = whisper.load_model("large-v2")
+    result = model.transcribe(
+        vocals_file, language="zh", word_timestamps=False)
 
-# 5️⃣ 输出 JSONL + 切片音频（确保无 BOM，UTF-8 编码）
-segments_file = os.path.join(outdir, "segments.jsonl")
-# 在 diarize_vocals.py 中修改写入部分
-with open(segments_file, "w", encoding="utf-8") as f:
-    for i, ((start, end), label) in enumerate(zip(segments, labels), 1):
-        start_sec = start / sr
-        end_sec = end / sr
-        seg_file = os.path.join(outdir, f"segment_{i}.wav")
-        sf.write(seg_file, y[start:end], sr)
-        info = {
-            "speaker": f"speaker{label}",
-            "start": round(start_sec, 3),
-            "end": round(end_sec, 3),
-            "file": seg_file
-        }
-        # 确保每次写入后立即刷新，避免缓冲区问题
-        f.write(json.dumps(info, ensure_ascii=False) + "\n")
-        f.flush()  # 立即写入磁盘
+    data, sr = sf.read(vocals_file)
+    encoder = VoiceEncoder()
 
-print(f"✅ 分段信息已保存: {segments_file}, 总段数: {len(segments)}, 识别人数: {num_speakers}")
+    speakers = []  # [(speaker_id, embedding)]
+    segments = []
+    spk_count = 0
+
+    for i, seg in enumerate(result["segments"], 1):
+        start_sample = int(seg["start"] * sr)
+        end_sample = int(seg["end"] * sr)
+        seg_file = out_dir / f"seg_{i:03d}.wav"
+        sf.write(seg_file, data[start_sample:end_sample], sr)
+
+        wav = preprocess_wav(seg_file)
+        emb = encoder.embed_utterance(wav)
+
+        # 判断属于哪个 speaker
+        assigned = False
+        for spk_id, spk_emb in speakers:
+            if cosine_similarity(emb, spk_emb) >= SIM_THRESHOLD:
+                speaker = spk_id
+                # 更新平均 embedding
+                new_emb = (spk_emb + emb) / 2
+                speakers = [(sid, new_emb if sid == spk_id else e)
+                            for sid, e in speakers]
+                assigned = True
+                break
+
+        if not assigned:
+            speaker = f"spk{spk_count}"
+            speakers.append((speaker, emb))
+            spk_count += 1
+
+        segments.append({
+            "speaker": speaker,
+            "file": str(seg_file.resolve()),
+            "start": round(seg["start"], 3),
+            "end": round(seg["end"], 3),
+            "text": seg.get("text", "")
+        })
+
+    # 输出 JSONL
+    segments_file = out_dir / "segments.jsonl"
+    with open(segments_file, "w", encoding="utf-8") as f:
+        for seg in segments:
+            json.dump(seg, f, ensure_ascii=False)
+            f.write("\n")
+
+    print(f"✅ 完成: 共 {len(segments)} 段, 检测到 {len(speakers)} 个不同音色")
+    print(f"使用相似度阈值: {SIM_THRESHOLD}")
+
+
+if __name__ == "__main__":
+    main()

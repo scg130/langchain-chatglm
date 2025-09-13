@@ -1,66 +1,68 @@
 #!/bin/bash
-# 一键生成 AI 多人轮唱音频（按时间顺序拼接 + 音量均衡）
+# 一键生成 AI 多人轮唱音频（按原时间戳拼接 + 音量均衡 + SeedVC + loudnorm）
 # 使用 conda 环境隔离：seed-vc
-# 支持修复偶数行 JSONL 问题
-
 set -e
 
 BASEDIR="/usr/local/src"
-SONG="${BASEDIR}/ai-singer/song.mp3"
+SONG="${BASEDIR}/ai-singer/song3.mp3"
 OUTDIR="${BASEDIR}/ai-singer/results"
 
+# 参考音频列表
 REFS=(
   "${BASEDIR}/ai-singer/ref1.mp3"
-#   "${BASEDIR}/ai-singer/ref2.mp3"
+  "${BASEDIR}/ai-singer/ref2.mp3"
+  "${BASEDIR}/ai-singer/ref1.mp3"
+  "${BASEDIR}/ai-singer/ref2.mp3"
 )
 
 mkdir -p "$OUTDIR"
 
 echo "===> Step 1. 分离人声和伴奏"
-ffmpeg -i "$SONG" -ar 44100 -ac 2 "${OUTDIR}/song_44k.wav" -y
+ffmpeg -hide_banner -loglevel error -i "$SONG" -ar 44100 -ac 2 "${OUTDIR}/song_44k.wav" -y
 spleeter separate -p spleeter:2stems -o "$OUTDIR" "${OUTDIR}/song_44k.wav"
 VOCALS="${OUTDIR}/song_44k/vocals.wav"
 ACCOMP="${OUTDIR}/song_44k/accompaniment.wav"
 
-echo "===> Step 2. 调用离线 diarize_vocals.py"
+echo "===> Step 2. 离线人声分段 (diarize_vocals.py)"
 DIARIZE_DIR="${OUTDIR}/diarized"
 mkdir -p "$DIARIZE_DIR"
-python3 "${BASEDIR}/ai-singer/diarize_vocals.py" "$VOCALS" "$DIARIZE_DIR" --force-single
+python3 "${BASEDIR}/ai-singer/diarize_vocals.py" "$VOCALS" "$DIARIZE_DIR" --threshold 0.7
 
 SEGMENTS_FILE="${DIARIZE_DIR}/segments.jsonl"
-if [[ ! -f "$SEGMENTS_FILE" ]]; then
-    echo "❌ Error: 分段文件不存在，退出"
-    exit 1
-fi
+[[ ! -f "$SEGMENTS_FILE" ]] && { echo "❌ 分段文件不存在"; exit 1; }
 
-echo "===> Step 3. SeedVC 音色转换 + 音量均衡"
+echo "===> Step 3. SeedVC 音色转换 "
 SEG_AUDIO_LIST=()
+START_LIST=()
 i=0
-
 while IFS= read -r line || [[ -n "$line" ]]; do
     [[ -z "$line" ]] && continue
     i=$((i+1))
-    # 修复偶数行 前面缺少{"s
+
+    # 修复 JSON 格式异常
     if [[ $line == peaker\"* ]]; then
         line="{\"s$line"
     fi
+    if [[ $line == \"speaker\"* ]]; then
+        line="{$line"
+    fi
 
+    SPEAKER=$(echo "$line" | jq -r '.speaker' 2>/dev/null) || continue
+    SEG_FILE=$(echo "$line" | jq -r '.file' 2>/dev/null) || continue
+    START_SEC=$(echo "$line" | jq -r '.start // 0')
+    START_MS=$(awk -v s="$START_SEC" 'BEGIN{printf "%d", s*1000}')
+    START_LIST+=("$START_MS")
 
-    SPEAKER=$(echo "$line" | jq -r '.speaker' 2>/dev/null) || { echo "❌ 无法解析 JSON: $line"; continue; }
-    SEG_FILE=$(echo "$line" | jq -r '.file' 2>/dev/null) || { echo "❌ 无法提取 file: $line"; continue; }
-    [[ ! -f "$SEG_FILE" ]] && { echo "❌ 文件不存在: $SEG_FILE"; continue; }
+    [[ ! -f "$SEG_FILE" ]] && { echo "⚠️ 文件不存在: $SEG_FILE"; continue; }
 
-    line=""
-
-    echo "Processing segment $i: Speaker=$SPEAKER, File=$SEG_FILE"
-
-    REF="${REFS[$(( (i-1) % ${#REFS[@]} ))]}"
-    [[ ! -f "$REF" ]] && { echo "❌ 参考音频不存在: $REF"; exit 1; }
+    REF_INDEX=$(echo "$SPEAKER" | grep -Eo '[0-9]+' | head -n 1)
+    REF="${REFS[$REF_INDEX]}"
+    [[ ! -f "$REF" ]] && REF="${BASEDIR}/ai-singer/ref1.mp3"
 
     OUT_CONVERT="${OUTDIR}/segment_${i}"
     mkdir -p "$OUT_CONVERT"
 
-    echo "===> Step 3.${i} SeedVC 音色转换 ($SPEAKER)"
+    echo "===> Step 3.${i} SeedVC ($SPEAKER)"
     cd "${BASEDIR}/seed-vc"
     conda run -n seed-vc python inference.py \
         --source "$SEG_FILE" \
@@ -77,42 +79,47 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     FINAL_SEG=$(ls -t "${OUT_CONVERT}"/*.wav 2>/dev/null | head -n 1)
     [[ -z "$FINAL_SEG" ]] && { echo "❌ SeedVC 未生成 wav"; exit 1; }
 
-    NORM_SEG="${OUTDIR}/segment_${i}_final.wav"
-    ffmpeg -i "$FINAL_SEG" -ar 44100 -ac 1 -c:a pcm_s16le "$NORM_SEG" -y
+    # === 分段音量标准化 (loudnorm) ===
+    NORM_SEG="${OUTDIR}/segment_${i}_norm.wav"
+    ffmpeg -hide_banner -loglevel error -i "$FINAL_SEG" \
+        -af "loudnorm=I=-16:TP=-1.5:LRA=11" \
+        -ar 44100 -ac 1 -c:a pcm_s16le "$NORM_SEG" -y
 
-    AVG_DB=$(ffmpeg -i "$NORM_SEG" -af volumedetect -f null /dev/null 2>&1 \
-             | grep "mean_volume" | grep -Eo "[-0-9.]+ dB" | head -1 | sed 's/ dB//')
-    if [[ -n "$AVG_DB" ]]; then
-        TARGET_DB=-20
-        GAIN=$(echo "$TARGET_DB - $AVG_DB" | bc)
-        NORM_SEG_GAIN="${OUTDIR}/segment_${i}_norm.wav"
-        ffmpeg -i "$NORM_SEG" -af "volume=${GAIN}dB" -ar 44100 -ac 1 -c:a pcm_s16le "$NORM_SEG_GAIN" -y
-        SEG_AUDIO_LIST+=("$NORM_SEG_GAIN")
-    else
-        echo "⚠️ 警告: 未检测到音量信息，直接使用 $NORM_SEG"
-        SEG_AUDIO_LIST+=("$NORM_SEG")
-    fi
+    SEG_AUDIO_LIST+=("$NORM_SEG")
 done < "$SEGMENTS_FILE"
 
-[[ ${#SEG_AUDIO_LIST[@]} -eq 0 ]] && { echo "❌ 没有处理任何片段"; exit 1; }
+[[ ${#SEG_AUDIO_LIST[@]} -eq 0 ]] && { echo "❌ 没有可用片段"; exit 1; }
 
-echo "===> Step 4. 拼接段落"
-TXT_LIST="${OUTDIR}/concat_list.txt"
-> "$TXT_LIST"
-for f in "${SEG_AUDIO_LIST[@]}"; do
-    echo "file '$(realpath "$f")'" >> "$TXT_LIST"
+echo "===> Step 4. 按时间戳逐段叠加合并片段"
+TMP_DIR="${OUTDIR}/tmp_merge"
+mkdir -p "$TMP_DIR"
+
+cp "${SEG_AUDIO_LIST[0]}" "${TMP_DIR}/current.wav"
+
+for ((i=1; i<${#SEG_AUDIO_LIST[@]}; i++)); do
+    DELAY_MS="${START_LIST[i]}"
+    SEG_FILE="${SEG_AUDIO_LIST[i]}"
+
+    ffmpeg -hide_banner -loglevel error -i "${TMP_DIR}/current.wav" -i "$SEG_FILE" \
+        -filter_complex "[1:a]adelay=${DELAY_MS}|${DELAY_MS}[delayed]; \
+                 [0:a][delayed]amix=inputs=2:duration=longest:weights=1 1[aout]" \
+        -map "[aout]" -c:a pcm_s16le -ar 44100 "${TMP_DIR}/current_new.wav" -y
+
+    mv "${TMP_DIR}/current_new.wav" "${TMP_DIR}/current.wav"
 done
-ffmpeg -f concat -safe 0 -i "$TXT_LIST" -c copy "${OUTDIR}/vocals_seq.wav" -y
+
+# === 合并后整体标准化 ===
+ffmpeg -hide_banner -loglevel error -i "${TMP_DIR}/current.wav" \
+    -af "loudnorm=I=-16:TP=-1.5:LRA=11" \
+    -ar 44100 -ac 2 "${OUTDIR}/vocals_seq_norm.wav" -y
 
 echo "===> Step 5. 混合伴奏"
-# 将 vocals_seq.wav 和伴奏统一为立体声并混合
-ffmpeg -i "${OUTDIR}/vocals_seq.wav" -i "$ACCOMP" \
-    -filter_complex "[0:a]aformat=channel_layouts=stereo[a0];[1:a]aformat=channel_layouts=stereo[a1];[a0][a1]amix=inputs=2:duration=longest:dropout_transition=2[aout]" \
-    -map "[aout]" -c:a libmp3lame -b:a 192k "${OUTDIR}/final_audio.mp3" -y
-
+ffmpeg -i "${OUTDIR}/vocals_seq_norm.wav" -i "$ACCOMP" \
+    -filter_complex "[0:a][1:a]amerge=inputs=2,pan=stereo|c0<c0+c1|c1<c2+c3[aout]" \
+    -map "[aout]" -c:a libmp3lame -b:a 192k -ac 2 "${OUTDIR}/final_audio.mp3" -y
 
 echo "===> Step 6. 清理临时文件"
-rm -f "${OUTDIR}/song_44k.wav" "$TXT_LIST"
-rm -rf "${OUTDIR}/segment_"* "${OUTDIR}/diarized"
+rm -f "${OUTDIR}/song_44k.wav"
+rm -rf "${OUTDIR}/segment_"* "${OUTDIR}/diarized" "${TMP_DIR}" "${OUTDIR}/song_44k"
 
 echo "✅ 完成: ${OUTDIR}/final_audio.mp3"
