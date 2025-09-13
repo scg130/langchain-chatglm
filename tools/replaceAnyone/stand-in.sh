@@ -8,6 +8,17 @@ conda create -n standin python=3.11 -y
 conda activate standin
 pip install -r requirements.txt
 
+
+# 下载 NVIDIA 官方源配置包
+wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu$(lsb_release -rs | tr -d .)/x86_64/cuda-ubuntu$(lsb_release -rs | tr -d .).pin
+# 移动到 sources.list.d 目录
+sudo mv cuda-ubuntu$(lsb_release -rs | tr -d .).pin /etc/apt/preferences.d/cuda-repository-pin-600
+# 添加 GPG key
+sudo apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu$(lsb_release -rs | tr -d .)/x86_64/3bf863cc.pub
+# 添加源
+sudo add-apt-repository "deb https://developer.download.nvidia.com/compute/cuda/repos/ubuntu$(lsb_release -rs | tr -d .)/x86_64/ /"
+sudo apt update -y
+
 sudo apt install -y cuda-toolkit-11-8
 sudo rm -f /usr/local/cuda
 sudo ln -s /usr/local/cuda-11.8 /usr/local/cuda

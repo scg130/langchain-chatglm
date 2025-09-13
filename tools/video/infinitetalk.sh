@@ -3,7 +3,7 @@ cd /usr/local/src
 git clone https://github.com/MeiGen-AI/InfiniteTalk.git
 cd InfiniteTalk
 
-conda create -n multitalk python=3.10
+conda create -n multitalk python=3.10 -y
 conda activate multitalk
 pip install torch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cu121
 pip install -U xformers==0.0.28 --index-url https://download.pytorch.org/whl/cu121
@@ -16,7 +16,7 @@ pip install wheel
 pip install flash_attn==2.7.4.post1
 
 pip install -r requirements.txt
-conda install -c conda-forge librosa
+conda install -c conda-forge librosa 
 
 conda install -c conda-forge ffmpeg
 
