@@ -9,10 +9,10 @@ OUTDIR="${BASEDIR}/ai-singer/results"
 
 # 参考音频列表
 REFS=(
-  "${BASEDIR}/ai-singer/source/ref1.mp3"
-  "${BASEDIR}/ai-singer/source/ref2.mp3"
-  "${BASEDIR}/ai-singer/source/ref1.mp3"
-  "${BASEDIR}/ai-singer/source/ref2.mp3"
+  "${BASEDIR}/ai-singer/source/lyl.mp3"
+  "${BASEDIR}/ai-singer/source/dsm.mp3"
+  "${BASEDIR}/ai-singer/source/zsy.mp3"
+  "${BASEDIR}/ai-singer/source/xmz.mp3"
 )
 
 mkdir -p "$OUTDIR"
