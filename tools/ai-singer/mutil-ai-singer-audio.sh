@@ -4,6 +4,10 @@
 set -e
 
 BASEDIR="/usr/local/src"
+
+# 截取 50-80 秒
+# ffmpeg -i song.mp3 -ss 50 -t 30 -c copy song3.mp3
+
 SONG="${BASEDIR}/ai-singer/source/song3.mp3"
 OUTDIR="${BASEDIR}/ai-singer/results"
 
