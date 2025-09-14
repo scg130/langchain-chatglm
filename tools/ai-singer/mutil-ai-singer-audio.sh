@@ -64,7 +64,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
 
     REF_INDEX=$(echo "$SPEAKER" | grep -Eo '[0-9]+' | head -n 1)
     REF="${REFS[$REF_INDEX]}"
-    [[ ! -f "$REF" ]] && REF="${BASEDIR}/ai-singer/ref1.mp3"
+    [[ ! -f "$REF" ]] && REF="${BASEDIR}/ai-singer/source/zsy.mp3"
 
     OUT_CONVERT="${OUTDIR}/segment_${i}"
     mkdir -p "$OUT_CONVERT"
