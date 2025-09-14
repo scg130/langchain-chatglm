@@ -14,8 +14,8 @@ OUTDIR="${BASEDIR}/ai-singer/results"
 
 # 参考音频列表
 REFS=(
-  "${BASEDIR}/ai-singer/source/lyl.mp3"
   "${BASEDIR}/ai-singer/source/dsm.mp3"
+  "${BASEDIR}/ai-singer/source/lyl.mp3"
   "${BASEDIR}/ai-singer/source/zsy.mp3"
   "${BASEDIR}/ai-singer/source/xmz.mp3"
 )
@@ -23,12 +23,12 @@ REFS=(
 mkdir -p "$OUTDIR"
 
 echo "===> Step 1. 分离人声和伴奏"
-ffmpeg -hide_banner -loglevel error -i "$SONG" -ar 44100 -ac 2 "${OUTDIR}/song_44k.wav" -y
+ffmpeg -i "$SONG" -ar 44100 -ac 2 "${OUTDIR}/song_44k.wav" -y
 # python 3.11
-# pip install  "click<8.2"    "typer<0.10" spleeter  tensorflow==2.12.1
-spleeter separate -p spleeter:2stems -o "$OUTDIR" "${OUTDIR}/song_44k.wav"
-VOCALS="${OUTDIR}/song_44k/vocals.wav"
-ACCOMP="${OUTDIR}/song_44k/accompaniment.wav"
+# pip install demucs
+demucs --two-stems=vocals -o "$OUTDIR" "${OUTDIR}/song_44k.wav"
+VOCALS="${OUTDIR}/htdemucs/song_44k/vocals.wav"
+ACCOMP="${OUTDIR}/htdemucs/song_44k/no_vocals.wav"
 
 echo "===> Step 2. 离线人声分段 (diarize_vocals.py)"
 DIARIZE_DIR="${OUTDIR}/diarized"
@@ -64,7 +64,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
 
     REF_INDEX=$(echo "$SPEAKER" | grep -Eo '[0-9]+' | head -n 1)
     REF="${REFS[$REF_INDEX]}"
-    [[ ! -f "$REF" ]] && REF="${BASEDIR}/ai-singer/source/zsy.mp3"
+    [[ ! -f "$REF" ]] && REF="${BASEDIR}/ai-singer/source/dsm.mp3"
 
     OUT_CONVERT="${OUTDIR}/segment_${i}"
     mkdir -p "$OUT_CONVERT"
@@ -106,7 +106,8 @@ cp "${SEG_AUDIO_LIST[0]}" "${TMP_DIR}/current.wav"
 for ((i=1; i<${#SEG_AUDIO_LIST[@]}; i++)); do
     DELAY_MS="${START_LIST[i]}"
     SEG_FILE="${SEG_AUDIO_LIST[i]}"
-
+    echo $DELAY_MS
+    echo $SEG_FILE
     ffmpeg -hide_banner -loglevel error -i "${TMP_DIR}/current.wav" -i "$SEG_FILE" \
         -filter_complex "[1:a]adelay=${DELAY_MS}|${DELAY_MS}[delayed]; \
                  [0:a][delayed]amix=inputs=2:duration=longest:weights=1 1[aout]" \
@@ -122,7 +123,7 @@ ffmpeg -hide_banner -loglevel error -i "${TMP_DIR}/current.wav" \
 
 echo "===> Step 5. 混合伴奏并保持立体声"
 # 可根据需要提升伴奏和人声音量
-ffmpeg -i "$ACCOMP" -af "volume=+9dB" "${OUTDIR}/accomp_boosted.wav" -y
+ffmpeg -i "$ACCOMP" -af "volume=+3dB" "${OUTDIR}/accomp_boosted.wav" -y
 ffmpeg -i "${OUTDIR}/vocals_seq_norm.wav" -af "volume=+6dB" "${OUTDIR}/vocals_boosted.wav" -y
 
 # 立体声混音
