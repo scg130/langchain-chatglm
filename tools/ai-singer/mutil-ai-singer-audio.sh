@@ -1,5 +1,6 @@
 #!/bin/bash
 # 一键生成 AI 多人轮唱音频（按原时间戳拼接 + 音量均衡 + SeedVC + loudnorm）
+# sudo apt install jq -y
 # 使用 conda 环境隔离：seed-vc
 set -e
 

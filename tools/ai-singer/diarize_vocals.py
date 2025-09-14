@@ -5,6 +5,7 @@
 Sentence-level diarization with speaker differentiation (带音色区分)
 
 依赖安装：
+    pip install "typing-extensions<4.6.0"
     pip install openai-whisper soundfile resemblyzer numpy
 
 说明：
