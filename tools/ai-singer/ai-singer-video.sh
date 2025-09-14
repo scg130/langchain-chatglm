@@ -13,6 +13,7 @@ mkdir -p "$OUTDIR"
 
 echo "===> Step 1. 分离人声伴奏 (spleeter)"
 ffmpeg -i "$SONG" -ar 44100 -ac 2 "${OUTDIR}/song_44k.wav" -y
+# python 3.11
 # pip install spleeter   "click<8.2"    "typer<0.10"  tensorflow==2.12.1
 spleeter separate -p spleeter:2stems -o "$OUTDIR" "${OUTDIR}/song_44k.wav"
 VOCALS="${OUTDIR}/song_44k/vocals.wav"
