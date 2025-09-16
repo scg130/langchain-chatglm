@@ -54,8 +54,8 @@ while IFS= read -r line; do
     i=$((i+1))
 
     # 修复 JSON 奇怪开头
-    [[ "$line" == *'speaker'* ]] && [[ "$line" != \{* ]] && line="{\"${line}"
-    [[ "$line" == *'peaker'* ]] && [[ "$line" != \{* ]] && line="{\"s${line}"
+    # [[ "$line" == *'speaker'* ]] && [[ "$line" != \{* ]] && line="{\"${line}"
+    # [[ "$line" == *'peaker'* ]] && [[ "$line" != \{* ]] && line="{\"s${line}"
 
     # 解析分段信息
     SPEAKER=$(echo "$line" | jq -r '.speaker' 2>/dev/null)
@@ -93,7 +93,7 @@ while IFS= read -r line; do
 
     # 分段音量标准化
     NORM_SEG="${TMP_DIR}/segment_${i}_norm.wav"
-    ffmpeg -hide_banner -loglevel error -i "$FINAL_SEG" \
+    ffmpeg -nostdin -hide_banner -loglevel error -i "$FINAL_SEG" \
         -af "loudnorm=I=-16:TP=-1.5:LRA=11" \
         -ar 44100 -ac 1 -c:a pcm_s16le "$NORM_SEG" -y
 
