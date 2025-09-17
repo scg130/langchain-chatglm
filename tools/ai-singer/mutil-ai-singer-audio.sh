@@ -109,7 +109,7 @@ cp "${SEG_AUDIO_LIST[0]}" "${TMP_DIR}/current.wav"
 for ((i=1; i<${#SEG_AUDIO_LIST[@]}; i++)); do
     DELAY_MS="${START_LIST[i]}"
     SEG_FILE="${SEG_AUDIO_LIST[i]}"
-    ffmpeg -hide_banner -loglevel error -i "${TMP_DIR}/current.wav" -i "$SEG_FILE" \
+    ffmpeg -nostdin -hide_banner -loglevel error -i "${TMP_DIR}/current.wav" -i "$SEG_FILE" \
         -filter_complex "[1:a]adelay=${DELAY_MS}|${DELAY_MS}[delayed]; \
                          [0:a][delayed]amix=inputs=2:duration=longest:weights=1 1[aout]" \
         -map "[aout]" -c:a pcm_s16le -ar 44100 "${TMP_DIR}/current_new.wav" -y
@@ -117,17 +117,17 @@ for ((i=1; i<${#SEG_AUDIO_LIST[@]}; i++)); do
 done
 
 # 整体音量标准化
-ffmpeg -hide_banner -loglevel error -i "${TMP_DIR}/current.wav" \
+ffmpeg -nostdin -hide_banner -loglevel error -i "${TMP_DIR}/current.wav" \
     -af "loudnorm=I=-16:TP=-1.5:LRA=11" \
     -ar 44100 -ac 2 "${TMP_DIR}/vocals_seq_norm.wav" -y
 
 echo "===> Step 5. 混合伴奏并保持立体声"
 # 提升伴奏和人声音量
-ffmpeg -i "$ACCOMP" -af "volume=+3dB" "${TMP_DIR}/accomp_boosted.wav" -y
-ffmpeg -i "${TMP_DIR}/vocals_seq_norm.wav" -af "volume=+6dB" "${TMP_DIR}/vocals_boosted.wav" -y
+ffmpeg -nostdin -i "$ACCOMP" -af "volume=+3dB" "${TMP_DIR}/accomp_boosted.wav" -y
+ffmpeg -nostdin -i "${TMP_DIR}/vocals_seq_norm.wav" -af "volume=+6dB" "${TMP_DIR}/vocals_boosted.wav" -y
 
 # 立体声混音
-ffmpeg -i "${TMP_DIR}/vocals_boosted.wav" -i "${TMP_DIR}/accomp_boosted.wav" \
+ffmpeg -nostdin -i "${TMP_DIR}/vocals_boosted.wav" -i "${TMP_DIR}/accomp_boosted.wav" \
   -filter_complex "[0:a][1:a]amix=inputs=2:duration=longest:dropout_transition=0[aout]" \
   -map "[aout]" -c:a libmp3lame -b:a 192k -ac 2 "${OUTDIR}/final_audio.mp3" -y
 
