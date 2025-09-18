@@ -37,7 +37,7 @@ python app_vc.py --checkpoint <path-to-checkpoint> --config <path-to-config> --f
 
 # 伪命令，具体以 seed-vc README 为准
 python inference.py \
-  --source /usr/local/src/ai-singer/source/sing1.wav \
+  --source /usr/local/src/ai-singer/source/song1.wav \
   --target /usr/local/src/ai-singer/source/zyt.mp3 \
   --output /usr/local/src/ai-singer/results \
   --diffusion-steps 40 \
