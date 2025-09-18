@@ -37,16 +37,14 @@ python app_vc.py --checkpoint <path-to-checkpoint> --config <path-to-config> --f
 
 # 伪命令，具体以 seed-vc README 为准
 python inference.py \
-  --source input_song.wav \
-  --target ref_singer.wav \
-  --output results/converted.wav \
-  --checkpoint checkpoints/singing_44k.pth \
-  --config configs/singing_44k.yaml \
+  --source /usr/local/src/ai-singer/source/sing1.wav \
+  --target /usr/local/src/ai-singer/source/zyt.mp3 \
+  --output /usr/local/src/ai-singer/results \
   --diffusion-steps 40 \
   --length-adjust 1.0 \
-  --inference-cfg-rate 0.7 \
+  --inference-cfg-rate 0.9 \
   --f0-condition True \
-  --auto-f0-adjust False \
+  --auto-f0-adjust True \
   --semi-tone-shift 0 \
-  --fp16 True
+  --fp16 False
 
