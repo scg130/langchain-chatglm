@@ -1,49 +1,28 @@
 #!/bin/bash
-cd /usr/local/src
-git clone https://github.com/MeiGen-AI/InfiniteTalk.git
-cd InfiniteTalk
 
+# 更新系统
+sudo apt update && sudo apt upgrade -y
+
+# 创建 Conda 环境
 conda create -n infiniteTalk python=3.10 -y
 conda activate infiniteTalk
-pip install torch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cu121
-pip install -U xformers==0.0.28 --index-url https://download.pytorch.org/whl/cu121
 
-pip install misaki[en]
-pip install ninja 
-pip install psutil 
-pip install packaging
-pip install wheel
-pip install flash_attn==2.7.4.post1
+# 克隆 AIStarter 仓库
+git clone https://github.com/AIStarter/AIStarter.git /usr/local/src/AIStarter
+cd /usr/local/src/AIStarter
 
+# 安装 Python 库
+pip install --upgrade pip
 pip install -r requirements.txt
-conda install -c conda-forge librosa 
 
-conda install -c conda-forge ffmpeg
+# 下载 InfiniteTalk 模型
+mkdir -p weights
+cd weights
+wget https://huggingface.co/Wan-AI/Wan2.1-I2V-14B-480P/resolve/main/Wan2.1-I2V-14B-480P.gguf
+wget https://huggingface.co/Wan-AI/Wan2.1-I2V-14B-480P-F16/resolve/main/Wan2.1-I2V-14B-480P-F16.gguf
+wget https://huggingface.co/TencentGameMate/chinese-wav2vec2-base/resolve/main/chinese-wav2vec2-base.pth
+wget https://huggingface.co/MeiGen-AI/InfiniteTalk/resolve/main/InfiniteTalk.safetensors
 
-pip install huggingface-hub
-
-huggingface-cli download Wan-AI/Wan2.1-I2V-14B-480P --local-dir ./weights/Wan2.1-I2V-14B-480P
-huggingface-cli download TencentGameMate/chinese-wav2vec2-base --local-dir ./weights/chinese-wav2vec2-base
-huggingface-cli download TencentGameMate/chinese-wav2vec2-base model.safetensors --revision refs/pr/1 --local-dir ./weights/chinese-wav2vec2-base
-huggingface-cli download MeiGen-AI/InfiniteTalk --local-dir ./weights/InfiniteTalk
-
-
-python generate_infinitetalk.py \
-    --ckpt_dir weights/Wan2.1-I2V-14B-480P \
-    --wav2vec_dir 'weights/chinese-wav2vec2-base' \
-    --infinitetalk_dir weights/InfiniteTalk/single/infinitetalk.safetensors \
-    --input_json examples/single_example_image.json \
-    --size infinitetalk-720 \
-    --sample_steps 40 \
-    --mode streaming \
-    --motion_frame 9 \
-    --save_file infinitetalk_res_720p
-
-
-huggingface-cli download Wan-AI/Wan2.1-I2V-14B-720P-F16.gguf --local-dir ./weights/Wan2.1-I2V-14B-720P-F16
-python app.py \
-    --ckpt_dir weights/Wan2.1-I2V-14B-720P-F16 \
-    --wav2vec_dir 'weights/chinese-wav2vec2-base' \
-    --infinitetalk_dir weights/InfiniteTalk/single/infinitetalk.safetensors \
-    --num_persistent_param_in_dit 0 \
-    --motion_frame 9 
+# 启动 AIStarter
+cd /usr/local/src/AIStarter
+python app.py
