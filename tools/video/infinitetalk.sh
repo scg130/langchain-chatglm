@@ -38,3 +38,12 @@ python generate_infinitetalk.py \
     --mode streaming \
     --motion_frame 9 \
     --save_file infinitetalk_res_720p
+
+
+huggingface-cli download Wan-AI/Wan2.1-I2V-14B-720P-F16.gguf --local-dir ./weights/Wan2.1-I2V-14B-720P-F16
+python app.py \
+    --ckpt_dir weights/Wan2.1-I2V-14B-720P-F16 \
+    --wav2vec_dir 'weights/chinese-wav2vec2-base' \
+    --infinitetalk_dir weights/InfiniteTalk/single/infinitetalk.safetensors \
+    --num_persistent_param_in_dit 0 \
+    --motion_frame 9 
