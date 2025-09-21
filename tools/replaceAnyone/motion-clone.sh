@@ -8,7 +8,10 @@ conda activate motionclone
 
 
 git lfs install
-git clone https://huggingface.co/botp/stable-diffusion-v1-5 models/StableDiffusion/
+git clone https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5 models/StableDiffusion/
+
+
+huggingface-cli download  runwayml/stable-diffusion-v1-5   --local-dir models/StableDiffusion
 
 # Perform Text-to-video generation with customized camera motion
 python t2v_video_sample.py --inference_config "configs/t2v_camera.yaml" --examples "configs/t2v_camera.jsonl"
