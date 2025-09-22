@@ -42,9 +42,9 @@ cd InfiniteTalk || exit
 # 创建模型目录
 mkdir -p $MODEL_DIR
 
-# 提示下载模型
-echo ">>> 请将 InfiniteTalk 1.3B 模型权重放入 $MODEL_DIR"
-echo "如果已有模型，请确保路径正确"
+pip install "huggingface_hub[cli]"
+huggingface-cli download Wan-AI/Wan2.1-T2V-1.3B --local-dir ${MODEL_DIR}
+
 
 # 启动 Gradio 界面
 echo ">>> 启动 Gradio Web 界面..."
