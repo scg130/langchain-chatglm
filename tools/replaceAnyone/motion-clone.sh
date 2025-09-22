@@ -30,6 +30,8 @@ echo ">>> 下载 Realistic Vision v6.0 (DreamBooth/LoRA，可选)"
 mkdir -p models/DreamBooth_LoRA
 wget -O models/DreamBooth_LoRA/realisticVisionV60B1_v51VAE.safetensors "https://huggingface.co/moiu2998/mymo/resolve/3c3093fa083909be34a10714c93874ce5c9dabc4/realisticVisionV60B1_v51VAE.safetensors?download=true"
 
+wget -O models/Motion_Module/v3_sd15_adapter.ckpt  https://huggingface.co/guoyww/animatediff/resolve/main/v3_sd15_adapter.ckpt
+
 echo ">>> 下载 VAE (可选)"
 mkdir -p models/VAE
 wget -O models/VAE/vae-ft-mse-840000-ema-pruned.safetensors \
