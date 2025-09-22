@@ -12,8 +12,6 @@ echo ">>> 创建并激活 conda 环境"
 conda env create -f environment.yaml || true
 source activate motionclone || conda activate motionclone
 
-echo ">>> 安装 git-lfs"
-git lfs install
 
 # ================= 必需模型 =================
 echo ">>> 下载 Stable Diffusion v1-5"
