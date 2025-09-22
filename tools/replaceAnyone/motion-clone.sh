@@ -10,7 +10,8 @@ conda activate motionclone
 git lfs install
 git clone https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5 models/StableDiffusion/
 
-
+wget -O models/Motion_Module/v3_sd15_mm.ckpt \
+  https://huggingface.co/guoyww/animatediff/resolve/main/v3_sd15_mm.ckpt
 huggingface-cli download  runwayml/stable-diffusion-v1-5   --local-dir models/StableDiffusion
 
 # Perform Text-to-video generation with customized camera motion
