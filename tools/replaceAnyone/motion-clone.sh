@@ -28,8 +28,7 @@ wget -O models/Motion_Module/v3_sd15_mm.ckpt \
 # ================= 可选模型 =================
 echo ">>> 下载 Realistic Vision v6.0 (DreamBooth/LoRA，可选)"
 mkdir -p models/DreamBooth_LoRA
-wget -O models/DreamBooth_LoRA/realisticVisionV60B1_v51VAE.safetensors \
-  https://civitai.com/api/download/models/29460 || echo "⚠️ RealisticVision 需手动下载: https://civitai.com/models/4201/realistic-vision-v60-b1"
+wget -O models/DreamBooth_LoRA/realisticVisionV60B1_v51VAE.safetensors "https://huggingface.co/moiu2998/mymo/resolve/3c3093fa083909be34a10714c93874ce5c9dabc4/realisticVisionV60B1_v51VAE.safetensors?download=true"
 
 echo ">>> 下载 VAE (可选)"
 mkdir -p models/VAE
