@@ -1,28 +1,52 @@
 #!/bin/bash
 
+# =============================
+# 一键部署 InfiniteTalk 1.3B (conda 版)
+# =============================
+
+# 配置
+ENV_NAME="infinitalk"
+MODEL_DIR="./weights/InfiniteTalk-1.3B"
+REPO_URL="https://github.com/MeiGen-AI/InfiniteTalk.git"
+
 # 更新系统
+echo ">>> 更新系统..."
 sudo apt update && sudo apt upgrade -y
 
-# 创建 Conda 环境
-conda create -n infiniteTalk python=3.10 -y
-conda activate infiniteTalk
+# 安装 git、wget、conda（如果未安装）
+echo ">>> 安装 git、wget..."
+sudo apt install -y git wget
 
-# 克隆 AIStarter 仓库
-git clone https://github.com/AIStarter/AIStarter.git /usr/local/src/AIStarter
-cd /usr/local/src/AIStarter
+# 检查 conda 是否存在
+if ! command -v conda &> /dev/null
+then
+    echo "conda 未安装，请先安装 Anaconda 或 Miniconda"
+    exit 1
+fi
 
-# 安装 Python 库
+# 创建 conda 环境
+echo ">>> 创建 conda 环境: $ENV_NAME"
+conda create -y -n $ENV_NAME python=3.10
+conda activate $ENV_NAME
+
+# 安装依赖
+echo ">>> 安装 Python 依赖"
 pip install --upgrade pip
-pip install -r requirements.txt
+pip install -r <(curl -s https://raw.githubusercontent.com/MeiGen-AI/InfiniteTalk/main/requirements.txt)
 
-# 下载 InfiniteTalk 模型
-mkdir -p weights
-cd weights
-wget https://huggingface.co/Wan-AI/Wan2.1-I2V-14B-480P/resolve/main/Wan2.1-I2V-14B-480P.gguf
-wget https://huggingface.co/Wan-AI/Wan2.1-I2V-14B-480P-F16/resolve/main/Wan2.1-I2V-14B-480P-F16.gguf
-wget https://huggingface.co/TencentGameMate/chinese-wav2vec2-base/resolve/main/chinese-wav2vec2-base.pth
-wget https://huggingface.co/MeiGen-AI/InfiniteTalk/resolve/main/InfiniteTalk.safetensors
+# 克隆 InfiniteTalk 仓库
+echo ">>> 克隆 InfiniteTalk 仓库..."
+git clone $REPO_URL
+cd InfiniteTalk || exit
 
-# 启动 AIStarter
-cd /usr/local/src/AIStarter
+# 创建模型目录
+mkdir -p $MODEL_DIR
+
+# 提示下载模型
+echo ">>> 请将 InfiniteTalk 1.3B 模型权重放入 $MODEL_DIR"
+echo "如果已有模型，请确保路径正确"
+
+# 启动 Gradio 界面
+echo ">>> 启动 Gradio Web 界面..."
+echo "访问 http://127.0.0.1:7860 进行使用"
 python app.py
