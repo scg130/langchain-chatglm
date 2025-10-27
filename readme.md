@@ -13,12 +13,13 @@ pip install huggingface-hub
 
 huggingface-cli download THUDM/chatglm3-6b --resume-download --local-dir ./chatglm3-6b
 
-
-{
-  "question": "巴黎奥运会的乒乓球男单冠军是谁？",
-  "history": [
-    ["巴黎奥运会的乒乓球男单冠军是谁？", "冠军是樊振东。"]
-  ],
-  "is_web_search": true,
-  "dir_path": ""
-}
+curl -X POST http://127.0.0.1:8800/api/v1/ask \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "巴黎奥运会的乒乓球男单冠军是谁？",
+    "history": [
+      ["巴黎奥运会的乒乓球男单冠军是谁？", "冠军是樊振东。"]
+    ],
+    "is_web_search": true,
+    "dir_path": ""
+  }'
