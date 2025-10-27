@@ -165,6 +165,7 @@ class QAService:
                     body = r.get("snippet", "")
                     url = r.get("href", "")
                     results.append({"title": title, "body": body, "url": url})
+            logger.info(f"ddgs search results: {results}")     
             return results        
         except Exception as e:
             logger.error(f"DDGS search failed: {e}")
