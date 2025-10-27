@@ -24,5 +24,3 @@ uvicorn
 bitsandbytes
 sse-starlette
 googlesearch-python
-fastapi
-sse-starlette
