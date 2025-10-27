@@ -329,8 +329,6 @@ class ChatGLMLLM(Runnable):
                 # 回退到简单格式
                 prompt = f"{messages[-1]['content']}"
 
-            logger.debug(f"模型输入: {prompt}")
-
             # 编码输入
             inputs = self.tokenizer(
                 prompt,

@@ -165,7 +165,6 @@ class QAService:
         if retriever is not None:
             tasks.append(asyncio.to_thread(
                 get_limited_context_fast, question, retriever, 2000))
-
         if is_web_search:
             tasks.append(asyncio.to_thread(
                 self._perform_web_search, question))
