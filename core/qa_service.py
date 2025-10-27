@@ -35,7 +35,7 @@ class QAService:
         self.chain_registry: Dict[str, Any] = {}
 
         # Search engine configuration
-        self._search_engine: Literal['google', 'ddgs'] = 'google'  # Default
+        self._search_engine: Literal['google', 'ddgs'] = 'ddgs'  # Default
         self._ddgs_available = DDGS is not None
         self._search_funcs = {
             'google': google_search,
@@ -149,11 +149,22 @@ class QAService:
         Returns:
             List of search results with 'title' and 'body' fields
         """
+        results = []
         if not self._ddgs_available:
             raise RuntimeError("DDGS not available")
         try:
             with DDGS() as ddgs:
-                return list(ddgs.text(query, max_results=max_results))
+                for r in ddgs.text(
+                query,
+                region="cn-zh",      # 关键：中文结果
+                safesearch="off",
+                max_results=max_results,
+                timelimit="y"         # 限定近一年（可选）
+            ):
+                    title = r.get("title", "")
+                    body = r.get("snippet", "")
+                    url = r.get("href", "")
+                    results.append({"title": title, "body": body, "url": url})
         except Exception as e:
             logger.error(f"DDGS search failed: {e}")
             return []
