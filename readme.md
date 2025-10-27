@@ -2,7 +2,7 @@ python 3.10.14   or python  3.11.7
 CUDA Version: 12.4 
 
 
-pip install -r requrements.txt
+pip install -r requirements.txt
 
 huggingface 镜像（如清华源）
 export HF_ENDPOINT=https://hf-mirror.com

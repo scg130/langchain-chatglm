@@ -27,8 +27,14 @@ async def ask(request: AskRequest):
         return AskResponse(
             answer=result["answer"],
         )
+    except ValueError as e:
+        logger.error(f"请求参数错误: {e}")
+        raise HTTPException(400, f"请求参数错误: {str(e)}")
+    except RuntimeError as e:
+        logger.error(f"服务运行错误: {e}")
+        raise HTTPException(500, f"服务运行错误: {str(e)}")
     except Exception as e:
-        logger.error(f"提问处理失败: {e}")
+        logger.error(f"提问处理失败: {e}", exc_info=True)
         raise HTTPException(500, f"处理问题失败: {str(e)}")
 
 
@@ -50,5 +56,6 @@ async def ask_stream(request: Request, body: AskRequest):
                 yield f"data: {chunk}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as e:
-            yield f"data: 发生错误：{str(e)}\n\n"
+            logger.error(f"流式处理错误: {e}", exc_info=True)
+            yield f"data: [ERROR] 发生错误：{str(e)}\n\n"
     return EventSourceResponse(event_generator())

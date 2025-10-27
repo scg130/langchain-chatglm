@@ -13,4 +13,4 @@ def google_search(question: str, max_results: int = 3) -> List[Dict[str, str]]:
         return results
     except Exception as e:
         logger.warning(f"Google 搜索失败: {e}")
-        return ""
+        return []  # 修复：返回空列表而不是空字符串

@@ -187,8 +187,9 @@ class QAService:
         if self._search_engine == 'ddgs' and not self._ddgs_available:
             logger.warning("DDGS not available, falling back to Google")
             self._search_engine = 'google'
-        search_func = self._search_funcs[self._search_engine]
+        search_func = self._search_funcs.get(self._search_engine)
         if search_func is None:
+            logger.warning(f"Search engine {self._search_engine} not available")
             return ""
 
         try:
