@@ -523,15 +523,39 @@ textarea:focus {
 }
 
 .modal-actions {
-    display: flex;
+    display: flex !important;
     justify-content: flex-end;
     gap: 10px;
     margin-top: 20px;
+    visibility: visible !important;
+    padding: 10px 0;
+}
+
+#confirmUploadBtn {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 12px 24px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.3s;
+    visibility: visible !important;
+    display: inline-block !important;
+    opacity: 1;
+}
+
+#confirmUploadBtn:hover:not(:disabled) {
+    opacity: 0.9;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 }
 
 #confirmUploadBtn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+    background: #ccc;
 }
 
 .upload-progress {

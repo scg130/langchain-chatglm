@@ -1,20 +1,20 @@
 const API_BASE = 'http://127.0.0.1:8800/api/v1';
 
-// DOM元素
-const chatMessages = document.getElementById('chatMessages');
-const questionInput = document.getElementById('questionInput');
-const sendBtn = document.getElementById('sendBtn');
-const uploadBtn = document.getElementById('uploadBtn');
-const uploadModal = document.getElementById('uploadModal');
-const closeModal = document.querySelector('.close');
-const fileInput = document.getElementById('modalFileInput');
-const confirmUploadBtn = document.getElementById('confirmUploadBtn');
-const webSearchToggle = document.getElementById('webSearchToggle');
-const dirSelect = document.getElementById('dirSelect');
-const sidebar = document.getElementById('sidebar');
-const toggleSidebar = document.getElementById('toggleSidebar');
-const newChatBtn = document.getElementById('newChatBtn');
-const chatList = document.getElementById('chatList');
+// DOM元素 - 将在 DOMContentLoaded 后初始化
+let chatMessages;
+let questionInput;
+let sendBtn;
+let uploadBtn;
+let uploadModal;
+let closeModal;
+let fileInput;
+let confirmUploadBtn;
+let webSearchToggle;
+let dirSelect;
+let sidebar;
+let toggleSidebar;
+let newChatBtn;
+let chatList;
 
 // 状态管理
 let isStreaming = false;
@@ -23,8 +23,32 @@ let chats = []; // 所有对话
 let currentChatId = null; // 当前对话ID
 let chatCounter = 0;
 
+// 初始化DOM元素
+function initDOMElements() {
+    chatMessages = document.getElementById('chatMessages');
+    questionInput = document.getElementById('questionInput');
+    sendBtn = document.getElementById('sendBtn');
+    uploadBtn = document.getElementById('uploadBtn');
+    uploadModal = document.getElementById('uploadModal');
+    closeModal = document.querySelector('.close');
+    fileInput = document.getElementById('modalFileInput');
+    confirmUploadBtn = document.getElementById('confirmUploadBtn');
+    webSearchToggle = document.getElementById('webSearchToggle');
+    dirSelect = document.getElementById('dirSelect');
+    sidebar = document.getElementById('sidebar');
+    toggleSidebar = document.getElementById('toggleSidebar');
+    newChatBtn = document.getElementById('newChatBtn');
+    chatList = document.getElementById('chatList');
+    
+    // 检查关键元素
+    if (!confirmUploadBtn) {
+        console.error('confirmUploadBtn not found!');
+    }
+}
+
 // 初始化
 document.addEventListener('DOMContentLoaded', () => {
+    initDOMElements();
     setupEventListeners();
     loadKnowledgeBases();
     createNewChat(); // 创建第一个对话
@@ -89,7 +113,12 @@ function setupEventListeners() {
     });
 
     // 确认上传
-    confirmUploadBtn.addEventListener('click', uploadFiles);
+    if (confirmUploadBtn) {
+        confirmUploadBtn.addEventListener('click', uploadFiles);
+        console.log('confirmUploadBtn event listener added');
+    } else {
+        console.error('Cannot add event listener: confirmUploadBtn is null');
+    }
 }
 
 async function sendMessage() {
@@ -369,7 +398,12 @@ function clearChat() {
 
 function showFileInfo() {
     const fileInfo = document.getElementById('fileInfo');
-    const confirmBtn = document.getElementById('confirmUploadBtn');
+    const confirmBtn = confirmUploadBtn || document.getElementById('confirmUploadBtn');
+    
+    if (!confirmBtn) {
+        console.error('confirmUploadBtn not found in showFileInfo');
+        return;
+    }
     
     if (selectedFiles.length === 0) {
         fileInfo.style.display = 'none';
@@ -387,10 +421,22 @@ function showFileInfo() {
     
     // 启用上传按钮
     confirmBtn.disabled = false;
+    confirmBtn.style.opacity = '1';
+    confirmBtn.style.cursor = 'pointer';
+    confirmBtn.style.visibility = 'visible';
+    confirmBtn.style.display = 'inline-block';
+    
     console.log('Files selected:', selectedFiles.length, 'Button disabled:', confirmBtn.disabled);
+    console.log('Button element:', confirmBtn);
+    console.log('Button style display:', getComputedStyle(confirmBtn).display);
+    console.log('Button style visibility:', getComputedStyle(confirmBtn).visibility);
 }
 
-async function uploadFiles() {
+async function uploadFiles(event) {
+    event?.preventDefault();
+    
+    console.log('uploadFiles called, selectedFiles:', selectedFiles.length);
+    
     if (selectedFiles.length === 0) {
         alert('请选择要上传的文件');
         return;
