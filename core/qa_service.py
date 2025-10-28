@@ -155,14 +155,14 @@ class QAService:
         try:
             with DDGS() as ddgs:
                 for r in ddgs.text(
-                query,
-                region="cn-zh",      # 关键：中文结果
-                safesearch="off",
-                max_results=max_results,
-                timelimit="y"         # 限定近一年（可选）
-            ):
+                    query,
+                    region="cn-zh",         # 关键：中文区域
+                    safesearch="off",
+                    max_results=max_results,
+                    timelimit="y"            # 限定近一年
+                ):
                     title = r.get("title", "")
-                    body = r.get("snippet", "")
+                    body = r.get("body", "")
                     url = r.get("href", "")
                     results.append({"title": title, "body": body, "url": url})
             logger.info(f"ddgs search results: {results}")     
