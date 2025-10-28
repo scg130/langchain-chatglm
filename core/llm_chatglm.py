@@ -32,7 +32,7 @@ class StopOnTokens(StoppingCriteria):
 class ChatGLMLLM(Runnable):
     def __init__(self,
                  model_name_cuda: str = "THUDM/glm-4-9b-chat", # Qwen/Qwen2.5-VL-7B-Instruct  图文搜索模型
-                 model_name_cpu: str = "Qwen/Qwen2.5-0.5B-Instruct",
+                 model_name_cpu: str = "Qwen/Qwen2.5-1.5B-Instruct",
                  model_path_cuda: Optional[str] = None,
                  model_path_cpu: Optional[str] = None,
                  revision: str = "main",
