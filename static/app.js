@@ -73,6 +73,17 @@ function setupEventListeners() {
         questionInput.style.height = 'auto';
         questionInput.style.height = Math.min(questionInput.scrollHeight, 120) + 'px';
     });
+    
+    // 添加全局错误处理，防止请求失败后状态卡住
+    window.addEventListener('unhandledrejection', (event) => {
+        console.error('Unhandled promise rejection:', event.reason);
+        if (isStreaming) {
+            console.log('Recovering from unhandled rejection...');
+            isStreaming = false;
+            if (sendBtn) sendBtn.disabled = false;
+            if (questionInput) questionInput.disabled = false;
+        }
+    });
 
     // 上传按钮
     uploadBtn.addEventListener('click', () => {
@@ -134,6 +145,7 @@ async function sendMessage() {
     addMessageToChat('user', question);
     questionInput.value = '';
     sendBtn.disabled = true;
+    questionInput.disabled = true;  // 禁用输入框防止重复提交
     questionInput.style.height = 'auto';
     isStreaming = true;
 
@@ -162,14 +174,34 @@ async function sendMessage() {
         
         console.log('Sending request:', requestData);
         
-        const response = await fetch(`${API_BASE}/ask`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestData)
-        });
+        // 添加超时控制（60秒）
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+            controller.abort();
+            console.log('Request timeout after 60s');
+        }, 60000);
+        
+        let response;
+        try {
+            response = await fetch(`${API_BASE}/ask`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestData),
+                signal: controller.signal
+            });
+        } catch (fetchError) {
+            clearTimeout(timeoutId);
+            if (fetchError.name === 'AbortError') {
+                throw new Error('请求超时（超过60秒），请稍后重试或简化问题');
+            }
+            throw fetchError;
+        }
+        
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
-            throw new Error(`请求失败: ${response.status}`);
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.detail || `请求失败: ${response.status}`);
         }
 
         const data = await response.json();
@@ -187,14 +219,36 @@ async function sendMessage() {
         updateChatTitle(currentChatId, question);
 
     } catch (error) {
-        indicator.remove();
-        const errorMsg = `❌ 错误: ${error.message}`;
+        // 安全地移除指示器
+        try {
+            if (indicator && indicator.parentNode) {
+                indicator.remove();
+            }
+        } catch (e) {
+            console.warn('Could not remove indicator:', e);
+        }
+        
+        // 显示错误消息
+        let errorMsg = '请求失败，请稍后重试';
+        if (error.message) {
+            errorMsg = `❌ ${error.message}`;
+        }
+        
         displayMessage('assistant', errorMsg);
         addMessageToChat('assistant', errorMsg);
         console.error('Error:', error);
     } finally {
+        // 无论如何都要重置状态
+        console.log('Resetting isStreaming state');
         isStreaming = false;
-        sendBtn.disabled = false;
+        if (sendBtn) {
+            sendBtn.disabled = false;
+        }
+        
+        // 移除输入框禁用（如果有的话）
+        if (questionInput) {
+            questionInput.disabled = false;
+        }
     }
 }
 
