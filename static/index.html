@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能文档问答系统</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- 左侧历史对话面板 -->
+        <div id="sidebar" class="sidebar">
+            <div class="sidebar-header">
+                <h2>💬 对话历史</h2>
+                <button id="toggleSidebar" class="toggle-btn">◄</button>
+            </div>
+            <div class="sidebar-content">
+                <button id="newChatBtn" class="new-chat-btn">➕ 新建对话</button>
+                <div id="chatList" class="chat-list">
+                    <!-- 对话列表将在这里动态生成 -->
+                </div>
+            </div>
+        </div>
+
+        <!-- 右侧聊天区域 -->
+        <div class="main-content">
+            <div class="container">
+                <header>
+                    <h1>🤖 智能文档问答系统</h1>
+                    <div class="header-actions">
+                        <input type="file" id="fileInput" multiple accept=".txt,.pdf,.docx,.pdf" style="display: none;">
+                        <button id="uploadBtn" class="btn btn-primary">📁 上传文档</button>
+                    </div>
+                </header>
+
+                <div class="chat-container">
+                    <div id="chatMessages" class="chat-messages">
+                        <div class="welcome-message">
+                            <p>👋 欢迎使用智能文档问答系统！</p>
+                            <p>您可以：</p>
+                            <ul>
+                                <li>上传文档到知识库</li>
+                                <li>提问获取答案</li>
+                                <li>开启网络搜索获取最新信息</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="input-area">
+                        <div class="input-controls">
+                            <label class="toggle">
+                                <input type="checkbox" id="webSearchToggle">
+                                <span class="toggle-label">网络搜索</span>
+                            </label>
+                            <select id="dirSelect" class="dir-select">
+                                <option value="">默认知识库</option>
+                            </select>
+                        </div>
+                        <div class="input-container">
+                            <textarea id="questionInput" placeholder="输入您的问题..." rows="1"></textarea>
+                            <button id="sendBtn" class="send-btn" disabled>发送</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="uploadModal" class="modal">
+                    <div class="modal-content">
+                        <span class="close">&times;</span>
+                        <h2>上传文档</h2>
+                        <div class="upload-area">
+                            <label for="modalFileInput" class="upload-label">
+                                <span>📁 选择文件</span>
+                                <p>支持格式: .txt, .pdf, .docx, .md</p>
+                            </label>
+                            <input type="file" id="modalFileInput" multiple accept=".txt,.pdf,.docx,.md" style="display: none;">
+                            <p id="fileInfo" style="margin-top: 10px; display: none;"></p>
+                        </div>
+                        <div id="uploadProgress" class="upload-progress"></div>
+                        <div class="modal-actions">
+                            <button id="confirmUploadBtn" class="btn btn-primary" disabled>确认上传</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
+
+

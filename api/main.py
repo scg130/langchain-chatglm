@@ -1,9 +1,13 @@
 from fastapi import FastAPI
-from api.routers import qa_router, health_router
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
+from api.routers import qa_router, health_router, upload_router
 from api.routers.qa_router import qa_service
 from contextlib import asynccontextmanager
 from config.logger_config import logger
 import warnings
+import os
 
 # 忽略 langchain_community 内部触发的 duckduckgo_search 重命名告警
 warnings.filterwarnings(
@@ -21,5 +25,27 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="智能文档问答API", version="1.0.0", lifespan=lifespan)
 
+# 添加CORS支持
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 创建上传目录
+os.makedirs("data/upload", exist_ok=True)
+
+# 静态文件服务
+static_dir = os.path.join(os.path.dirname(__file__), '..', 'static')
+if os.path.exists(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    
+    @app.get("/")
+    async def index():
+        return FileResponse(os.path.join(static_dir, "index.html"))
+
 app.include_router(qa_router)
 app.include_router(health_router)
+app.include_router(upload_router)
