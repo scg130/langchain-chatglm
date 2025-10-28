@@ -468,10 +468,14 @@ async function uploadFiles(event) {
             if (result.failed && result.failed.length > 0) {
                 successMsg += `<p style="color: orange; text-align: center;">⚠️ ${result.failed.length} 个文件上传失败</p>`;
             }
+            successMsg += `<p style="color: blue; text-align: center; font-size: 12px;">📚 向量数据库正在更新中...</p>`;
             progressDiv.innerHTML = successMsg;
             
-            // 重新加载知识库列表
-            await loadKnowledgeBases();
+            // 等待1秒后刷新知识库列表
+            setTimeout(async () => {
+                await loadKnowledgeBases();
+                console.log('知识库列表已刷新');
+            }, 1000);
             
             // 清空文件选择
             selectedFiles = [];
@@ -482,7 +486,7 @@ async function uploadFiles(event) {
             setTimeout(() => {
                 uploadModal.style.display = 'none';
                 progressDiv.innerHTML = '';
-            }, 2000);
+            }, 3000);
         } else {
             progressDiv.innerHTML = `<p style="color: red; text-align: center;">❌ 上传失败: ${result.detail || '未知错误'}</p>`;
         }
@@ -498,19 +502,52 @@ async function loadKnowledgeBases() {
         const response = await fetch(`${API_BASE}/knowledge-bases`);
         const data = await response.json();
         
-        let options = '<option value="">默认知识库</option>';
+        let options = '';
         
         if (data.knowledge_bases && data.knowledge_bases.length > 0) {
-            options += data.knowledge_bases
+            // 添加默认知识库
+            const defaultKb = data.knowledge_bases.find(kb => kb.name === '');
+            if (defaultKb) {
+                options += `<option value="${defaultKb.name}">默认知识库 (${defaultKb.file_count} 文件)</option>`;
+            }
+            
+            // 添加其他知识库
+            const otherKbs = data.knowledge_bases.filter(kb => kb.name !== '');
+            options += otherKbs
                 .map(kb => `<option value="${kb.name}">${kb.name} (${kb.file_count} 文件)</option>`)
                 .join('');
         }
         
-        dirSelect.innerHTML = options;
+        // 如果没有知识库，添加默认选项
+        if (!options) {
+            options = '<option value="">默认知识库</option>';
+        }
+        
+        // 只更新知识库选择器
+        if (dirSelect) {
+            const currentValue = dirSelect.value;
+            dirSelect.innerHTML = options;
+            // 尝试恢复之前选择的值
+            if (currentValue) {
+                const option = Array.from(dirSelect.options).find(opt => opt.value === currentValue);
+                if (option) {
+                    dirSelect.value = currentValue;
+                }
+            }
+            console.log('知识库列表已更新，当前选项数:', dirSelect.options.length);
+        }
+        
+        // 同时更新 upload 知识库
+        const uploadDir = data.knowledge_bases?.find(kb => kb.name === 'upload');
+        if (uploadDir) {
+            console.log('上传目录知识库:', uploadDir);
+        }
     } catch (error) {
         console.error('加载知识库失败:', error);
         // 默认选项
-        dirSelect.innerHTML = '<option value="">默认知识库</option>';
+        if (dirSelect) {
+            dirSelect.innerHTML = '<option value="">默认知识库</option>';
+        }
     }
 }
 
