@@ -7,15 +7,7 @@ from transformers import AutoTokenizer
 from config.logger_config import logger
 from core.llm_chatglm import ChatGLMLLM
 from util.func import get_qa_chain_with_history, initialize_vectordb
-from util.search import google_search
-
-# DuckDuckGo Search import with fallback
-try:
-    from ddgs import DDGS
-except ImportError:
-    DDGS = None
-    logger.warning("DDGS not available. Please install with: pip install ddgs")
-
+from util.search import google_search, ddgs_search, baidu_search
 
 class QAService:
     def __init__(self, base_data_dir: str = "./data"):
@@ -35,11 +27,11 @@ class QAService:
         self.chain_registry: Dict[str, Any] = {}
 
         # Search engine configuration
-        self._search_engine: Literal['google', 'ddgs'] = 'ddgs'  # Default
-        self._ddgs_available = DDGS is not None
+        self._search_engine: Literal['google', 'ddgs', 'baidu'] = 'ddgs'  # Default
         self._search_funcs = {
             'google': google_search,
-            'ddgs': self._ddgs_search if self._ddgs_available else None
+            'ddgs': ddgs_search,
+            'baidu': baidu_search
         }
 
         # Initialization state
@@ -60,22 +52,10 @@ class QAService:
         return self._search_engine
 
     @search_engine.setter
-    def search_engine(self, engine: Literal['google', 'ddgs']) -> None:
-        """Set the active search engine.
-
-        Args:
-            engine: Either 'google' or 'ddgs'
-
-        Raises:
-            ValueError: If invalid engine specified
-            RuntimeError: If DDGS engine requested but not available
-        """
-        if engine not in ['google', 'ddgs']:
+    def search_engine(self, engine: Literal['google', 'ddgs','baidu']) -> None:
+        if engine not in ['google', 'ddgs', 'baidu']:
             raise ValueError(
-                "Invalid search engine. Must be 'google' or 'ddgs'")
-        if engine == 'ddgs' and not self._ddgs_available:
-            raise RuntimeError(
-                "DDGS not available. Please install ddgs package first")
+                "Invalid search engine. Must be 'google', 'ddgs' or 'baidu'")
         self._search_engine = engine
         logger.info(f"Search engine switched to: {engine}")
 
@@ -138,38 +118,6 @@ class QAService:
             self.retriever_registry.get(dir_path),
             self.chain_registry.get(dir_path)
         )
-
-    def _ddgs_search(self, query: str, max_results: int = 3) -> List[Dict[str, str]]:
-        """Perform search using DuckDuckGo.
-
-        Args:
-            query: Search query
-            max_results: Maximum number of results to return
-
-        Returns:
-            List of search results with 'title' and 'body' fields
-        """
-        results = []
-        if not self._ddgs_available:
-            raise RuntimeError("DDGS not available")
-        try:
-            with DDGS() as ddgs:
-                for r in ddgs.text(
-                    query,
-                    region="cn-zh",         # 关键：中文区域
-                    safesearch="off",
-                    max_results=max_results,
-                    timelimit="y"            # 限定近一年
-                ):
-                    title = r.get("title", "")
-                    body = r.get("body", "")
-                    url = r.get("href", "")
-                    results.append({"title": title, "body": body, "url": url})
-            logger.info(f"ddgs search results: {results}")     
-            return results        
-        except Exception as e:
-            logger.error(f"DDGS search failed: {e}")
-            return []
 
     async def _build_context(self, question: str, retriever: Any, is_web_search: bool) -> str:
         """Build context from retriever and web search."""
