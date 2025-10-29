@@ -157,7 +157,11 @@ class ChatGLMLLM(Runnable):
 
         # 设置停止条件 - 添加更多停止词来提前终止生成
         stop_words = ["。", "！", "？", "\n\n",
-                      "<|endoftext|>", "<|im_end|>", "谢谢", "希望"]
+                      "请回答...",
+                      "如果还有其他问题.*$",
+                      "感谢.*提问.*$",
+                      "这是我.*回答.*$",
+                      "希望能.*帮助.*$"]
         self.stop_criteria = StopOnTokens(self.tokenizer, stop_words)
 
         # 设置生成配置
@@ -182,7 +186,25 @@ class ChatGLMLLM(Runnable):
 
         total_tokens = 0
         truncated = []
-        for q, a in reversed(history):
+        
+        # 过滤和验证历史记录格式
+        valid_history = []
+        for item in history:
+            if isinstance(item, (tuple, list)) and len(item) == 2:
+                question, answer = item
+                if isinstance(question, str) and isinstance(answer, str):
+                    valid_history.append((question, answer))
+                else:
+                    logger.warning(f"跳过无效的历史记录项（非字符串类型）: {item}")
+            else:
+                logger.warning(f"跳过格式错误的历史记录项: {item}")
+        
+        # 如果没有有效历史记录，返回空列表
+        if not valid_history:
+            return []
+
+        # 处理有效历史记录
+        for q, a in reversed(valid_history):
             q_tokens = self.tokenizer.encode(q, add_special_tokens=False)
             a_tokens = self.tokenizer.encode(a, add_special_tokens=False)
             tokens_count = len(q_tokens) + len(a_tokens)
@@ -199,9 +221,24 @@ class ChatGLMLLM(Runnable):
     def convert_history_to_messages(self, history: List[Tuple[str, str]]) -> List[Dict[str, str]]:
         """将历史对话转换为消息格式"""
         messages = []
-        for question, answer in history:
+        
+        # 过滤和验证历史记录格式
+        valid_history = []
+        for item in history:
+            if isinstance(item, (tuple, list)) and len(item) == 2:
+                question, answer = item
+                if isinstance(question, str) and isinstance(answer, str):
+                    valid_history.append((question, answer))
+                else:
+                    logger.warning(f"跳过无效的历史记录项（非字符串类型）: {item}")
+            else:
+                logger.warning(f"跳过格式错误的历史记录项: {item}")
+        
+        # 转换有效历史记录
+        for question, answer in valid_history:
             messages.append({"role": "user", "content": question})
             messages.append({"role": "assistant", "content": answer})
+            
         return messages
 
     def truncate_text(self, text: str, max_tokens: int) -> str:

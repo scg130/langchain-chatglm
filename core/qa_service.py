@@ -259,8 +259,8 @@ class QAService:
 
         # 调用LLM
         if chain is not None:
-            result = await asyncio.to_thread(chain.invoke, inputs)
-            answer = result.get("result", result)
+            answer = await asyncio.to_thread(chain.invoke, inputs)
+            logger.info(f"LLM result: {answer}")
         else:
             answer = await asyncio.to_thread(self.llm.invoke, inputs)
 
