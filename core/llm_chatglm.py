@@ -317,7 +317,7 @@ class ChatGLMLLM(Runnable):
 
             # 构建消息
             messages = self.build_messages(query, context, safe_history)
-
+            logger.debug(f"messages: {messages}")
             # 应用聊天模板
             if hasattr(self.tokenizer, 'apply_chat_template'):
                 prompt = self.tokenizer.apply_chat_template(
