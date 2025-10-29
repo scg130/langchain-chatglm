@@ -35,7 +35,7 @@ def get_qa_chain_with_history(llm: Any, retriever: Any) -> Any:
     return chain
 
 
-def get_qa_chain(retriever):
+def get_qa_chain(llm: Any, retriever: Any) -> Any:
     prompt_template = """
     文档内容（请严格参考）：
     {context}

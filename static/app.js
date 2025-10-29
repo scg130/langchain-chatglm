@@ -568,7 +568,7 @@ async function loadKnowledgeBases() {
             // 添加其他知识库
             const otherKbs = data.knowledge_bases.filter(kb => kb.name !== '');
             options += otherKbs
-                .map(kb => `<option value="${kb.name}">${kb.name} (${kb.file_count} 文件)</option>`)
+                .map(kb => `<option value="${kb.path}">${kb.name} (${kb.file_count} 文件)</option>`)
                 .join('');
         }
         
