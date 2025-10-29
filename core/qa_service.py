@@ -9,6 +9,57 @@ from core.llm_chatglm import ChatGLMLLM
 from util.func import get_qa_chain_with_history, initialize_vectordb
 from util.search import google_search, ddgs_search, baidu_search
 
+class ContextTemplate:
+    """改进的上下文模板类，用于优化搜索结果处理和消息构建"""
+    
+    def __init__(self):
+        self.templates = {
+            "system_prompt": "请基于以下信息准确回答用户问题。如果信息不足，请直接说明无法找到相关信息。",
+            "chromadb_section": "【知识库搜索结果】\n{content}",
+            "websearch_section": "【网络搜索结果】\n{content}",
+            "combined_context": "【相关信息】\n{content}",
+            "user_query": "问题：{question}",
+            "empty_result": "（无相关信息）"
+        }
+    
+    def build_context_message(self, chromadb_results: str, websearch_results: str, question: str) -> str:
+        """构建上下文消息，自动处理空搜索结果"""
+        sections = []
+        
+        # 处理chromadb搜索结果
+        if chromadb_results and chromadb_results.strip():
+            sections.append(self.templates["chromadb_section"].format(content=chromadb_results))
+        
+        # 处理websearch搜索结果
+        if websearch_results and websearch_results.strip():
+            sections.append(self.templates["websearch_section"].format(content=websearch_results))
+        
+        # 如果所有搜索结果都为空，添加提示
+        if not sections:
+            sections.append(self.templates["empty_result"])
+        
+        # 构建完整上下文
+        context_content = "\n\n".join(sections)
+        combined_context = self.templates["combined_context"].format(content=context_content)
+        
+        # 添加用户问题
+        user_query = self.templates["user_query"].format(question=question)
+        
+        return f"{combined_context}\n\n{user_query}"
+    
+    def build_complete_prompt(self, question: str, history: List[Tuple[str, str]], 
+                            chromadb_results: str, websearch_results: str) -> Dict[str, Any]:
+        """构建完整的提示信息"""
+        # 构建上下文消息
+        context_message = self.build_context_message(chromadb_results, websearch_results, question)
+        
+        return {
+            "system_prompt": self.templates["system_prompt"],
+            "context": context_message,
+            "history": history,
+            "question": question
+        }
+
 class QAService:
     def __init__(self, base_data_dir: str = "./data"):
         """Initialize QA Service with vector database support and search capabilities.
@@ -20,6 +71,9 @@ class QAService:
         self.llm = ChatGLMLLM()
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.llm.model_name_or_path, trust_remote_code=True)
+        
+        # 添加改进的模板系统
+        self.template = ContextTemplate()
 
         # Registry for vector databases
         self.vector_registry: Dict[str, Any] = {}
@@ -119,34 +173,8 @@ class QAService:
             self.chain_registry.get(dir_path)
         )
 
-    async def _build_context(self, question: str, retriever: Any, is_web_search: bool) -> str:
-        """Build context from retriever and web search."""
-        tasks = []
-
-        if retriever is not None:
-            tasks.append(asyncio.to_thread(
-                get_limited_context_fast, question, retriever, 2000))
-        if is_web_search:
-            tasks.append(asyncio.to_thread(
-                self._perform_web_search, question))
-
-        context_parts = []
-        if tasks:
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            for r in results:
-                if isinstance(r, Exception):
-                    logger.warning(f"Context building subtask failed: {r}")
-                    continue
-                if isinstance(r, str) and r:
-                    context_parts.append(r)
-
-        return "\n".join(context_parts).strip()
-
     def _perform_web_search(self, question: str) -> str:
         """Perform web search using current search engine."""
-        if self._search_engine == 'ddgs' and not self._ddgs_available:
-            logger.warning("DDGS not available, falling back to Google")
-            self._search_engine = 'google'
         search_func = self._search_funcs.get(self._search_engine)
         if search_func is None:
             logger.warning(f"Search engine {self._search_engine} not available")
@@ -163,6 +191,94 @@ class QAService:
             logger.warning(f"{self._search_engine.upper()} search failed: {e}")
             return ""
 
+    async def _build_context_separated(self, question: str, retriever: Any, is_web_search: bool) -> Tuple[str, str]:
+        """分别构建chromadb和websearch的上下文，便于模板处理"""
+        tasks = []
+        results = {"chromadb": "", "websearch": ""}
+
+        if retriever is not None:
+            tasks.append(("chromadb", asyncio.to_thread(
+                get_limited_context_fast, question, retriever, 2000)))
+        
+        if is_web_search:
+            tasks.append(("websearch", asyncio.to_thread(
+                self._perform_web_search, question)))
+
+        if tasks:
+            task_results = await asyncio.gather(
+                *[task for _, task in tasks], 
+                return_exceptions=True
+            )
+            
+            for (task_type, _), result in zip(tasks, task_results):
+                if isinstance(result, Exception):
+                    logger.warning(f"{task_type} context building failed: {result}")
+                    continue
+                if isinstance(result, str) and result.strip():
+                    results[task_type] = result
+
+        return results["chromadb"], results["websearch"]
+
+    async def ask_with_template(
+        self,
+        question: str,
+        history: Optional[List[Tuple[str, str]]] = None,
+        is_web_search: bool = False,
+        dir_path: str = ""
+    ) -> Dict[str, Any]:
+        """使用改进的模板系统获取答案
+
+        Args:
+            question: 用户问题
+            history: 对话历史
+            is_web_search: 是否包含网络搜索
+            dir_path: 向量数据库目录路径
+
+        Returns:
+            包含答案的字典
+        """
+        history = history or []
+        retriever, chain = self._get_chain_by_dir(dir_path)
+
+        # 分别获取chromadb和websearch结果
+        chromadb_results, websearch_results = await self._build_context_separated(
+            question, retriever, is_web_search
+        )
+
+        # 使用模板构建完整提示
+        prompt_data = self.template.build_complete_prompt(
+            question, history, chromadb_results, websearch_results
+        )
+
+        # 构建LLM输入
+        inputs = {
+            "query": prompt_data["question"],
+            "history": prompt_data["history"],
+            "context": prompt_data["context"]
+        }
+
+        # 调用LLM
+        if chain is not None:
+            result = await asyncio.to_thread(chain.invoke, inputs)
+            answer = result.get("result", result)
+        else:
+            answer = await asyncio.to_thread(self.llm.invoke, inputs)
+
+        # 记录搜索结果的统计信息
+        search_stats = {
+            "chromadb_has_results": bool(chromadb_results and chromadb_results.strip()),
+            "websearch_has_results": bool(websearch_results and websearch_results.strip()),
+            "chromadb_length": len(chromadb_results),
+            "websearch_length": len(websearch_results)
+        }
+        logger.info(f"Search results stats: {search_stats}")
+
+        return {
+            "answer": answer,
+            "search_stats": search_stats
+        }
+
+    # 保持原有的ask方法兼容性
     async def ask(
         self,
         question: str,
@@ -181,19 +297,8 @@ class QAService:
         Returns:
             Dictionary with 'answer' key containing the response
         """
-        history = history or []
-        retriever, chain = self._get_chain_by_dir(dir_path)
-
-        context = await self._build_context(question, retriever, is_web_search)
-        inputs = {"query": question, "history": history, "context": context}
-
-        if chain is not None:
-            result = await asyncio.to_thread(chain.invoke, inputs)
-            answer = result.get("result", result)
-        else:
-            answer = await asyncio.to_thread(self.llm.invoke, inputs)
-
-        return {"answer": answer}
+        # 默认使用改进的模板系统
+        return await self.ask_with_template(question, history, is_web_search, dir_path)
 
     async def ask_stream(
         self,
