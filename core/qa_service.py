@@ -283,11 +283,7 @@ class QAService:
         }
 
         # 调用LLM
-        if chain is not None:
-            answer = await asyncio.to_thread(chain.invoke, inputs)
-            logger.info(f"LLM result: {answer}")
-        else:
-            answer = await asyncio.to_thread(self.llm.invoke, inputs)
+        answer = await asyncio.to_thread(self.llm.invoke, inputs)
 
         # 记录搜索结果的统计信息
         search_stats = {

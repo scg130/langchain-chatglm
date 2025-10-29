@@ -162,12 +162,13 @@ class VectorStoreManager:
         batch_size: int = 1000,
         force_reload: bool = False,
         show_progress: bool = True,
+        file_to_delete: str = ""
     ) -> Dict[str, int]:
         vectordb = self.get_vectorstore(dir_path)
 
         if force_reload:
             self.logger.info("🧹 强制重新加载文档，清空已有向量库")
-            vectordb._collection.delete()
+            vectordb._collection.delete(where={"source": f"{dir_path}/{file_to_delete}"})
             existing_keys = set()
         else:
             existing_keys = self._get_existing_keys(vectordb)

@@ -4,6 +4,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException
 from typing import List
 from config.logger_config import logger
 from core.vectorstore_manager import VectorStoreManager
+from api.routers.qa_router import qa_service
 
 router = APIRouter(prefix="/api/v1", tags=["Upload"])
 
@@ -47,10 +48,12 @@ async def upload_files(files: List[UploadFile] = File(...)):
     # 重新加载向量数据库
     try:
         logger.info("开始重新加载向量数据库...")
+        await qa_service._register_directory(upload_dir)
         stats = vector_manager.add_directory(
             upload_dir,
             batch_size=1000,
-            force_reload=False
+            force_reload=True,
+            file_to_delete=file.filename
         )
         logger.info(f"向量数据库更新成功: {stats}")
     except Exception as e:

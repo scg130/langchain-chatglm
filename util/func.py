@@ -5,9 +5,10 @@ from typing import Any, List, Tuple
 
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
-from langchain_core.runnables import RunnableMap
 
 from core.vectorstore_manager import VectorStoreManager
+from langchain_core.runnables import RunnableMap, RunnableLambda
+
 
 # 初始化向量库管理器实例
 vector_manager = VectorStoreManager()
@@ -23,12 +24,18 @@ def format_history(history: List[Tuple[str, str]]) -> str:
 
 
 def get_qa_chain_with_history(llm: Any, retriever: Any) -> Any:
+    def build_context(x):
+        # 优先使用外部 context，否则从检索器获取
+        if x.get("context"):
+            return x["context"]
+        docs = retriever.invoke(x["query"])
+        return "\n".join([doc.page_content for doc in docs])
+
     chain = (
         RunnableMap({
             "query": lambda x: x["query"],
             "history": lambda x: format_history(x.get("history", [])),
-            # 优先使用外部传入的 context（可包含 web 搜索），否则回退到检索器
-            "context": lambda x: (x.get("context") or "\n".join([doc.page_content for doc in retriever.invoke(x["query"])]))
+            "context": RunnableLambda(build_context)
         })
         | llm
     )
