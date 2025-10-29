@@ -156,13 +156,38 @@ class QAService:
 
     async def _register_directory(self, dir_path: str) -> None:
         """Register a single directory as a vector database."""
-        vectordb = initialize_vectordb(dir_path=dir_path)
-        retriever = vectordb.as_retriever(search_kwargs={"k": 3})
-        chain = get_qa_chain_with_history(self.llm, retriever)
-
-        self.vector_registry[dir_path] = vectordb
-        self.retriever_registry[dir_path] = retriever
-        self.chain_registry[dir_path] = chain
+        try:
+            # 检查目录是否存在
+            if not os.path.exists(dir_path):
+                logger.warning(f"目录不存在: {dir_path}")
+                return
+                
+            # 检查目录中是否有文件
+            has_files = any(os.path.isfile(os.path.join(dir_path, f)) 
+                            for f in os.listdir(dir_path) 
+                            if os.path.isfile(os.path.join(dir_path, f)))
+            
+            if not has_files:
+                logger.warning(f"目录中没有文件: {dir_path}")
+                return
+                
+            vectordb = initialize_vectordb(dir_path=dir_path)
+            
+            # 修复检索器配置 - 移除不支持的score_threshold参数
+            retriever = vectordb.as_retriever(
+                search_kwargs={
+                    "k": 5  # 只保留检索数量参数
+                }
+            )
+            chain = get_qa_chain_with_history(self.llm, retriever)
+    
+            self.vector_registry[dir_path] = vectordb
+            self.retriever_registry[dir_path] = retriever
+            self.chain_registry[dir_path] = chain
+            logger.info(f"✅ 成功注册向量库: {dir_path}")
+            
+        except Exception as e:
+            logger.error(f"❌ 注册向量库失败 {dir_path}: {e}")
 
     def _get_chain_by_dir(self, dir_path: str) -> Tuple[Optional[Any], Optional[Any]]:
         """Retrieve retriever and chain by directory path."""

@@ -19,7 +19,12 @@ warnings.filterwarnings(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("启动初始化QA服务...")
-    await qa_service.initialize()
+    try:
+        await qa_service.initialize()
+        logger.info("QA服务初始化完成")
+    except Exception as e:
+        logger.error(f"QA服务初始化失败: {e}")
+        raise
     yield
     logger.info("应用关闭")
 
