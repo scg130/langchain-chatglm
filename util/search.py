@@ -83,5 +83,5 @@ def baidu_search(query: str, max_results: int = 3):
                 "url": url,
                 "snippet": snippet
             })
-
+    logger.info(f"baidu search results: {results}")    
     return results        
