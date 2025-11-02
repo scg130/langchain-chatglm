@@ -1,14 +1,13 @@
-import torch
-from langchain_community.chat_message_histories import RedisChatMessageHistory
-from langchain.memory import ConversationBufferWindowMemory
 from typing import Any, List, Tuple
 
+import torch
 from langchain.chains import RetrievalQA
+from langchain.memory import ConversationBufferWindowMemory
 from langchain.prompts import PromptTemplate
+from langchain_community.chat_message_histories import RedisChatMessageHistory
+from langchain_core.runnables import RunnableLambda, RunnableMap
 
 from core.vectorstore_manager import VectorStoreManager
-from langchain_core.runnables import RunnableMap, RunnableLambda
-
 
 # 初始化向量库管理器实例
 vector_manager = VectorStoreManager()
@@ -43,15 +42,22 @@ def get_qa_chain_with_history(llm: Any, retriever: Any) -> Any:
 
 
 def get_qa_chain(llm: Any, retriever: Any) -> Any:
-    prompt_template = """
-    文档内容（请严格参考）：
-    {context}
+    prompt_template = """请基于以下文档内容准确回答用户问题。
 
-    问题：
-    {question}
+【文档内容】
+{context}
 
-    答案：
-    """
+【用户问题】
+{question}
+
+回答要求：
+1. 严格基于文档内容，不要编造信息
+2. 回答要简洁明了，直接给出核心答案
+3. 如果文档中没有相关信息，请说明"文档中未找到相关信息"
+4. 避免使用客套话和重复内容
+
+【回答】
+"""
     prompt = PromptTemplate(template=prompt_template,
                             input_variables=["context", "question"])
 

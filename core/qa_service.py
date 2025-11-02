@@ -7,58 +7,70 @@ from transformers import AutoTokenizer
 from config.logger_config import logger
 from core.llm_chatglm import ChatGLMLLM
 from util.func import get_qa_chain_with_history, initialize_vectordb
-from util.search import google_search, ddgs_search, baidu_search
+from util.search import baidu_search, ddgs_search, google_search
+
 
 class ContextTemplate:
     """改进的上下文模板类，用于优化搜索结果处理和消息构建"""
-    
+
     def __init__(self):
         self.templates = {
-            "system_prompt": "请基于以下信息准确回答用户问题。如果信息不足，请直接说明无法找到相关信息。",
-            "chromadb_section": "【知识库搜索结果】\n{content}",
+            "system_prompt": """你是一个专业的AI助手，请基于以下信息准确回答用户问题。
+
+回答要求：
+1. 优先使用知识库中的信息，其次使用网络搜索结果
+2. 如果信息不足，请直接说明"无法找到相关信息"
+3. 保持回答简洁、专业、客观
+4. 避免使用客套话和重复内容""",
+            "chromadb_section": "【知识库信息】\n{content}",
             "websearch_section": "【网络搜索结果】\n{content}",
-            "combined_context": "【相关信息】\n{content}",
-            "user_query": "问题：{question}",
-            "empty_result": "（无相关信息）"
+            "combined_context": "【参考信息】\n{content}",
+            "user_query": "【用户问题】\n{question}",
+            "empty_result": "（暂无相关信息）"
         }
-    
+
     def build_context_message(self, chromadb_results: str, websearch_results: str, question: str) -> str:
         """构建上下文消息，自动处理空搜索结果"""
         sections = []
-        
+
         # 处理chromadb搜索结果
         if chromadb_results and chromadb_results.strip():
-            sections.append(self.templates["chromadb_section"].format(content=chromadb_results))
-        
+            sections.append(self.templates["chromadb_section"].format(
+                content=chromadb_results))
+
         # 处理websearch搜索结果
         if websearch_results and websearch_results.strip():
-            sections.append(self.templates["websearch_section"].format(content=websearch_results))
-        
+            sections.append(self.templates["websearch_section"].format(
+                content=websearch_results))
+
         # 如果所有搜索结果都为空，添加提示
         if not sections:
             sections.append(self.templates["empty_result"])
-        
+
         # 构建完整上下文
         context_content = "\n\n".join(sections)
-        combined_context = self.templates["combined_context"].format(content=context_content)
-        
+        combined_context = self.templates["combined_context"].format(
+            content=context_content)
+
         # 添加用户问题
         user_query = self.templates["user_query"].format(question=question)
-        
+
         return f"{combined_context}\n\n{user_query}"
-    
-    def build_complete_prompt(self, question: str, history: List[Tuple[str, str]], 
-                            chromadb_results: str, websearch_results: str) -> Dict[str, Any]:
+
+    def build_complete_prompt(self, question: str, history: List[Tuple[str, str]],
+                              chromadb_results: str, websearch_results: str) -> Dict[str, Any]:
         """构建完整的提示信息"""
         # 构建上下文消息
-        context_message = self.build_context_message(chromadb_results, websearch_results, question)
-        
+        context_message = self.build_context_message(
+            chromadb_results, websearch_results, question)
+
         return {
             "system_prompt": self.templates["system_prompt"],
             "context": context_message,
             "history": history,
             "question": question
         }
+
 
 class QAService:
     def __init__(self, base_data_dir: str = "./data"):
@@ -71,7 +83,7 @@ class QAService:
         self.llm = ChatGLMLLM()
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.llm.model_name_or_path, trust_remote_code=True)
-        
+
         # 添加改进的模板系统
         self.template = ContextTemplate()
 
@@ -81,7 +93,8 @@ class QAService:
         self.chain_registry: Dict[str, Any] = {}
 
         # Search engine configuration
-        self._search_engine: Literal['google', 'ddgs', 'baidu'] = 'ddgs'  # Default
+        self._search_engine: Literal['google',
+                                     'ddgs', 'baidu'] = 'ddgs'  # Default
         self._search_funcs = {
             'google': google_search,
             'ddgs': ddgs_search,
@@ -106,7 +119,7 @@ class QAService:
         return self._search_engine
 
     @search_engine.setter
-    def search_engine(self, engine: Literal['google', 'ddgs','baidu']) -> None:
+    def search_engine(self, engine: Literal['google', 'ddgs', 'baidu']) -> None:
         if engine not in ['google', 'ddgs', 'baidu']:
             raise ValueError(
                 "Invalid search engine. Must be 'google', 'ddgs' or 'baidu'")
@@ -161,18 +174,18 @@ class QAService:
             if not os.path.exists(dir_path):
                 logger.warning(f"目录不存在: {dir_path}")
                 return
-                
+
             # 检查目录中是否有文件
-            has_files = any(os.path.isfile(os.path.join(dir_path, f)) 
-                            for f in os.listdir(dir_path) 
+            has_files = any(os.path.isfile(os.path.join(dir_path, f))
+                            for f in os.listdir(dir_path)
                             if os.path.isfile(os.path.join(dir_path, f)))
-            
+
             if not has_files:
                 logger.warning(f"目录中没有文件: {dir_path}")
                 return
-                
+
             vectordb = initialize_vectordb(dir_path=dir_path)
-            
+
             # 修复检索器配置 - 移除不支持的score_threshold参数
             retriever = vectordb.as_retriever(
                 search_kwargs={
@@ -180,12 +193,12 @@ class QAService:
                 }
             )
             chain = get_qa_chain_with_history(self.llm, retriever)
-    
+
             self.vector_registry[dir_path] = vectordb
             self.retriever_registry[dir_path] = retriever
             self.chain_registry[dir_path] = chain
             logger.info(f"✅ 成功注册向量库: {dir_path}")
-            
+
         except Exception as e:
             logger.error(f"❌ 注册向量库失败 {dir_path}: {e}")
 
@@ -202,7 +215,8 @@ class QAService:
         """Perform web search using current search engine."""
         search_func = self._search_funcs.get(self._search_engine)
         if search_func is None:
-            logger.warning(f"Search engine {self._search_engine} not available")
+            logger.warning(
+                f"Search engine {self._search_engine} not available")
             return ""
 
         try:
@@ -224,20 +238,21 @@ class QAService:
         if retriever is not None:
             tasks.append(("chromadb", asyncio.to_thread(
                 get_limited_context_fast, question, retriever, 2000)))
-        
+
         if is_web_search:
             tasks.append(("websearch", asyncio.to_thread(
                 self._perform_web_search, question)))
 
         if tasks:
             task_results = await asyncio.gather(
-                *[task for _, task in tasks], 
+                *[task for _, task in tasks],
                 return_exceptions=True
             )
-            
+
             for (task_type, _), result in zip(tasks, task_results):
                 if isinstance(result, Exception):
-                    logger.warning(f"{task_type} context building failed: {result}")
+                    logger.warning(
+                        f"{task_type} context building failed: {result}")
                     continue
                 if isinstance(result, str) and result.strip():
                     results[task_type] = result

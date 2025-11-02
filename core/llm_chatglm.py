@@ -31,7 +31,8 @@ class StopOnTokens(StoppingCriteria):
 
 class ChatGLMLLM(Runnable):
     def __init__(self,
-                 model_name_cuda: str = "THUDM/glm-4-9b-chat", # Qwen/Qwen2.5-VL-7B-Instruct  图文搜索模型
+                 # Qwen/Qwen2.5-VL-7B-Instruct  图文搜索模型
+                 model_name_cuda: str = "THUDM/glm-4-9b-chat",
                  model_name_cpu: str = "Qwen/Qwen2.5-0.5B-Instruct",
                  model_path_cuda: Optional[str] = None,
                  model_path_cpu: Optional[str] = None,
@@ -186,7 +187,7 @@ class ChatGLMLLM(Runnable):
 
         total_tokens = 0
         truncated = []
-        
+
         # 过滤和验证历史记录格式
         valid_history = []
         for item in history:
@@ -198,7 +199,7 @@ class ChatGLMLLM(Runnable):
                     logger.warning(f"跳过无效的历史记录项（非字符串类型）: {item}")
             else:
                 logger.warning(f"跳过格式错误的历史记录项: {item}")
-        
+
         # 如果没有有效历史记录，返回空列表
         if not valid_history:
             return []
@@ -221,7 +222,7 @@ class ChatGLMLLM(Runnable):
     def convert_history_to_messages(self, history: List[Tuple[str, str]]) -> List[Dict[str, str]]:
         """将历史对话转换为消息格式"""
         messages = []
-        
+
         # 过滤和验证历史记录格式
         valid_history = []
         for item in history:
@@ -233,12 +234,12 @@ class ChatGLMLLM(Runnable):
                     logger.warning(f"跳过无效的历史记录项（非字符串类型）: {item}")
             else:
                 logger.warning(f"跳过格式错误的历史记录项: {item}")
-        
+
         # 转换有效历史记录
         for question, answer in valid_history:
             messages.append({"role": "user", "content": question})
             messages.append({"role": "assistant", "content": answer})
-            
+
         return messages
 
     def truncate_text(self, text: str, max_tokens: int) -> str:
@@ -260,17 +261,32 @@ class ChatGLMLLM(Runnable):
         """构建消息列表（适用于 ChatGLM-4 和 Qwen）"""
         messages = []
 
-        # 更简洁的系统提示词
-        system_prompt = "请基于文档内容准确回答用户问题，回答要简洁明了，直接给出答案。如果文档中没有相关信息，请直接说'无法找到相关信息'。"
+        # 优化的系统提示词
+        system_prompt = """你是一个专业的AI助手，请基于提供的文档内容准确回答用户问题。
+
+回答要求：
+1. 简洁明了，直接给出核心答案
+2. 如果文档中有相关信息，请基于文档内容回答
+3. 如果文档中没有相关信息，请直接说明"无法在文档中找到相关信息"
+4. 避免使用"希望以上信息对您有帮助"等客套话
+5. 保持专业、客观的语气
+
+请严格按照以上要求回答问题。"""
         messages.append({"role": "system", "content": system_prompt})
 
         # 添加历史对话
         history_messages = self.convert_history_to_messages(history)
         messages.extend(history_messages)
 
-        # 添加当前查询和上下文 - 更简洁的格式
+        # 优化的上下文格式
         if context:
-            user_content = f"文档：{context}\n问题：{query}"
+            user_content = f"""【参考文档】
+{context}
+
+【用户问题】
+{query}
+
+请基于参考文档回答用户问题。"""
         else:
             user_content = query
 
