@@ -8,3 +8,4 @@ chroma_store/chroma.sqlite3
 logs/
 tools/.env
 data/upload/
+.env

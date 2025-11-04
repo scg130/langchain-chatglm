@@ -33,7 +33,7 @@ class ChatGLMLLM(Runnable):
     def __init__(self,
                  # Qwen/Qwen2.5-VL-7B-Instruct  图文搜索模型
                  model_name_cuda: str = "THUDM/glm-4-9b-chat",
-                 model_name_cpu: str = "Qwen/Qwen2.5-0.5B-Instruct",
+                 model_name_cpu: str = "Qwen/Qwen2.5-1.5B-Instruct",
                  model_path_cuda: Optional[str] = None,
                  model_path_cpu: Optional[str] = None,
                  revision: str = "main",
@@ -91,7 +91,8 @@ class ChatGLMLLM(Runnable):
             config = AutoConfig.from_pretrained(
                 self.model_name_or_path,
                 revision=revision,
-                trust_remote_code=True
+                trust_remote_code=True,
+                use_auth_token=os.getenv("HF_API_TOKEN")
             )
             model_max_length = getattr(config, "model_max_length",
                                        getattr(config, "max_position_embeddings",
@@ -129,7 +130,8 @@ class ChatGLMLLM(Runnable):
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.model_name_or_path,
             trust_remote_code=True,
-            revision=revision
+            revision=revision,
+            use_auth_token=os.getenv("HF_API_TOKEN")
         )
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
