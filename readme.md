@@ -1,3 +1,6 @@
+conda create -n py310 python=3.10.14 -y
+conda activate py310
+
 python 3.10.14   or python  3.11.7
 CUDA Version: 12.4 
 
