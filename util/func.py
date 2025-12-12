@@ -1,11 +1,22 @@
 from typing import Any, List, Tuple
 
 import torch
-from langchain.chains import RetrievalQA
-from langchain.memory import ConversationBufferWindowMemory
-from langchain.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate
 from langchain_community.chat_message_histories import RedisChatMessageHistory
 from langchain_core.runnables import RunnableLambda, RunnableMap
+
+# LangChain 1.0 兼容性导入
+try:
+    from langchain.chains import RetrievalQA
+    from langchain.memory import ConversationBufferWindowMemory
+except ImportError:
+    try:
+        from langchain_legacy.chains import RetrievalQA
+        from langchain_legacy.memory import ConversationBufferWindowMemory
+    except ImportError:
+        # 如果都不存在，使用新的 API
+        from langchain.chains.retrieval_qa.base import RetrievalQA
+        from langchain.memory import ConversationBufferWindowMemory
 
 from core.vectorstore_manager import VectorStoreManager
 
