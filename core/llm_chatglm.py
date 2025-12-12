@@ -33,7 +33,7 @@ class ChatGLMLLM(Runnable):
     def __init__(self,
                  # Qwen/Qwen2.5-VL-7B-Instruct  图文搜索模型
                  model_name_cuda: str = "THUDM/glm-4-9b-chat",
-                 model_name_cpu: str = "Qwen/Qwen2.5-1.5B-Instruct",
+                 model_name_cpu: str = "Qwen/Qwen2.5-0.5B-Instruct",
                  model_path_cuda: Optional[str] = None,
                  model_path_cpu: Optional[str] = None,
                  revision: str = "main",
@@ -126,13 +126,29 @@ class ChatGLMLLM(Runnable):
 
     def load_model_and_tokenizer(self, revision: str):
         """加载分词器和模型"""
-        # 加载分词器
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            self.model_name_or_path,
-            trust_remote_code=True,
-            revision=revision,
-            use_auth_token=os.getenv("HF_API_TOKEN")
-        )
+        # 加载分词器 - 添加回退机制处理 fast tokenizer 兼容性问题
+        try:
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                self.model_name_or_path,
+                trust_remote_code=True,
+                revision=revision,
+                use_auth_token=os.getenv("HF_API_TOKEN"),
+                use_fast=True  # 优先使用 fast tokenizer
+            )
+        except Exception as fast_error:
+            logger.warning(f"Failed to load fast tokenizer: {fast_error}")
+            logger.info("Falling back to slow tokenizer (use_fast=False)")
+            try:
+                self.tokenizer = AutoTokenizer.from_pretrained(
+                    self.model_name_or_path,
+                    trust_remote_code=True,
+                    revision=revision,
+                    use_auth_token=os.getenv("HF_API_TOKEN"),
+                    use_fast=False  # 使用 slow tokenizer
+                )
+            except Exception as slow_error:
+                logger.error(f"Failed to load slow tokenizer: {slow_error}")
+                raise RuntimeError(f"Tokenizer loading failed with both fast and slow tokenizers. Fast error: {fast_error}, Slow error: {slow_error}")
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
             logger.info(
@@ -142,19 +158,21 @@ class ChatGLMLLM(Runnable):
         self.is_chatglm = "glm" in self.model_name_or_path.lower()
         self.is_qwen = "qwen" in self.model_name_or_path.lower()
 
-        # 动态计算所需的 torch_dtype
+        # 动态计算所需的 torch_dtype（参考 Qwen3 示例，使用 "auto"）
         if self.device == "cuda":
-            torch_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+            # CUDA 模式下使用自动类型推断
+            dtype = "auto"
         else:
-            torch_dtype = torch.float32
+            # CPU 模式使用 float32
+            dtype = torch.float32
 
-        # 加载模型
+        # 加载模型（参考 Qwen3 示例）
         self.model = AutoModelForCausalLM.from_pretrained(
             self.model_name_or_path,
             trust_remote_code=True,
             revision=revision,
+            dtype=dtype,
             device_map="auto" if self.device == "cuda" else None,
-            torch_dtype=torch_dtype,
             low_cpu_mem_usage=True
         )
 
@@ -373,46 +391,48 @@ class ChatGLMLLM(Runnable):
             # 构建消息
             messages = self.build_messages(query, context, safe_history)
             logger.debug(f"messages: {messages}")
-            # 应用聊天模板
+            # 应用聊天模板（参考 Qwen3 示例，但 Qwen2.5 不支持 thinking 模式）
             if hasattr(self.tokenizer, 'apply_chat_template'):
-                prompt = self.tokenizer.apply_chat_template(
+                text = self.tokenizer.apply_chat_template(
                     messages,
                     tokenize=False,
-                    add_generation_prompt=True
+                    add_generation_prompt=True,
+                    enable_thinking=True # Switches between thinking and non-thinking modes. Default is True. Qwen2.5 不支持 enable_thinking 参数
                 )
             else:
                 # 回退到简单格式
-                prompt = f"{messages[-1]['content']}"
+                text = f"{messages[-1]['content']}"
 
             # 编码输入
-            inputs = self.tokenizer(
-                prompt,
-                return_tensors="pt",
-                truncation=True,
-                max_length=self.max_total_tokens
-            ).to(self.device)
+            model_inputs = self.tokenizer([text], return_tensors="pt").to(self.device)
 
-            # 生成回复 - 使用更严格的参数
+            # 生成回复（参考 Qwen3 示例）
             with torch.no_grad():
-                outputs = self.model.generate(
-                    **inputs,
+                generated_ids = self.model.generate(
+                    **model_inputs,
                     max_new_tokens=self.max_new_tokens,
                     do_sample=True,
                     temperature=self.temperature,
                     top_p=self.top_p,
-                    repetition_penalty=1.2,  # 增加重复惩罚
+                    repetition_penalty=1.2,
                     pad_token_id=self.tokenizer.pad_token_id,
                     eos_token_id=self.tokenizer.eos_token_id,
-                    stopping_criteria=StoppingCriteriaList(
-                        [self.stop_criteria]),
-                    num_return_sequences=1
+                    stopping_criteria=StoppingCriteriaList([self.stop_criteria]) if self.stop_criteria else None
                 )
 
-            # 解码输出（跳过输入部分）
-            response = self.tokenizer.decode(
-                outputs[0][inputs['input_ids'].shape[-1]:],
-                skip_special_tokens=True
-            ).strip()
+            # 解码输出（跳过输入部分，参考 Qwen3 示例）
+            output_ids = generated_ids[0][len(model_inputs.input_ids[0]):].tolist()
+
+            # parsing thinking content
+            try:
+                # rindex finding 151668 (</think>)
+                index = len(output_ids) - output_ids[::-1].index(151668)
+            except ValueError:
+                index = 0
+
+            thinking_content = self.tokenizer.decode(output_ids[:index], skip_special_tokens=True).strip("\n")
+            logger.info(f"thinking_content: {thinking_content}")
+            response = self.tokenizer.decode(output_ids, skip_special_tokens=True).strip()
 
             # 清理和精简响应
             response = self.clean_response(response)
@@ -460,23 +480,18 @@ class ChatGLMLLM(Runnable):
             # 构建消息
             messages = self.build_messages(query, context, safe_history)
 
-            # 应用聊天模板
+            # 应用聊天模板（参考 Qwen3 示例）
             if hasattr(self.tokenizer, 'apply_chat_template'):
-                prompt = self.tokenizer.apply_chat_template(
+                text = self.tokenizer.apply_chat_template(
                     messages,
                     tokenize=False,
                     add_generation_prompt=True
                 )
             else:
-                prompt = f"{messages[-1]['content']}\n\n请回答："
+                text = f"{messages[-1]['content']}\n\n请回答："
 
-            # 编码输入
-            inputs = self.tokenizer(
-                prompt,
-                return_tensors="pt",
-                truncation=True,
-                max_length=self.max_total_tokens
-            ).to(self.device)
+            # 编码输入（参考 Qwen3 示例）
+            model_inputs = self.tokenizer([text], return_tensors="pt").to(self.device)
 
             # 创建流式生成器
             streamer = TextIteratorStreamer(
@@ -487,12 +502,12 @@ class ChatGLMLLM(Runnable):
             )
 
             generation_kwargs = dict(
-                **inputs,
+                **model_inputs,
                 max_new_tokens=self.max_new_tokens,
                 do_sample=True,
-                temperature=0.7,
-                top_p=0.9,
-                repetition_penalty=1.1,
+                temperature=self.temperature,
+                top_p=self.top_p,
+                repetition_penalty=1.2,
                 pad_token_id=self.tokenizer.pad_token_id,
                 eos_token_id=self.tokenizer.eos_token_id,
                 streamer=streamer
