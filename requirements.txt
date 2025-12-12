@@ -8,6 +8,7 @@ langchain-legacy>=0.1.0
 chromadb>=1.0.9
 sentence-transformers==2.6.1
 torch==2.2.0
+torchvision==0.17.0
 sentencepiece
 protobuf==3.20.3
 unstructured
