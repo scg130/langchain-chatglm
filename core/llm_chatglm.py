@@ -1,544 +1,459 @@
-import asyncio
 import os
 import re
-import sys
-from threading import Thread
-from typing import Any, Dict, Generator, List, Optional, Tuple, Union
-
+import asyncio
 import torch
-from langchain_core.runnables import Runnable
-from requests.exceptions import ChunkedEncodingError, ConnectionError
-from transformers import (AutoConfig, AutoModel, AutoModelForCausalLM,
-                          AutoTokenizer, GenerationConfig, StoppingCriteria,
-                          StoppingCriteriaList, TextIteratorStreamer)
-
+from typing import Any, Dict, List, Tuple, Optional, Generator, AsyncGenerator
+from threading import Thread
+from pydantic import Field, PrivateAttr
+from transformers import (
+    AutoTokenizer,
+    AutoModelForCausalLM,
+    GenerationConfig,
+    TextIteratorStreamer,
+)
+from langchain_core.language_models.llms import BaseLLM
+from langchain_core.callbacks import CallbackManagerForLLMRun
+from langchain_core.outputs import LLMResult, Generation
 from config.logger_config import logger
 
 
-class StopOnTokens(StoppingCriteria):
-    def __init__(self, tokenizer, stop_words):
-        self.tokenizer = tokenizer
-        self.stop_words = stop_words
-        self.stop_ids = [tokenizer.encode(
-            word, add_special_tokens=False) for word in stop_words]
+class StableLLM(BaseLLM):
+    """
+    稳定版 LLM 封装
+    - 支持 ChatGLM / Qwen2.5 / Qwen3
+    - 面向 RAG / 文档问答
+    - 标准 LangChain LLM 接口
+    """
 
-    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
-        for stop_id in self.stop_ids:
-            if len(input_ids[0]) >= len(stop_id) and input_ids[0][-len(stop_id):].tolist() == stop_id:
-                return True
-        return False
+    model_name_cuda: str = Field(default="THUDM/glm-4-9b-chat")
+    model_name_cpu: str = Field(default="Qwen/Qwen2.5-0.5B-Instruct")
+    model_path_cuda: Optional[str] = Field(default=None)
+    model_path_cpu: Optional[str] = Field(default=None)
+    max_new_tokens: int = Field(default=512)
+    temperature: float = Field(default=0.3)
+    top_p: float = Field(default=0.8)
 
+    # 使用 PrivateAttr 存储非 Pydantic 字段
+    _device: str = PrivateAttr()
+    _model_path: str = PrivateAttr()
+    _history: List[Tuple[str, str]] = PrivateAttr(default_factory=list)
+    _tokenizer: Any = PrivateAttr()
+    _model: Any = PrivateAttr()
+    _generation_config: Any = PrivateAttr()
 
-class ChatGLMLLM(Runnable):
-    def __init__(self,
-                 # Qwen/Qwen2.5-VL-7B-Instruct  图文搜索模型
-                 model_name_cuda: str = "THUDM/glm-4-9b-chat",
-                 model_name_cpu: str = "Qwen/Qwen3-0.6B", # Qwen/Qwen3-0.6B Qwen/Qwen2.5-0.5B-Instruct
-                 model_path_cuda: Optional[str] = None,
-                 model_path_cpu: Optional[str] = None,
-                 revision: str = "main",
-                 max_new_tokens: int = 512,  # 减少最大生成长度
-                 use_modelscope: bool = False,
-                 temperature: float = 0.3,   # 降低温度，减少随机性
-                 top_p: float = 0.8):        # 降低top_p，减少多样性
-        """
-        初始化大语言模型（支持 ChatGLM-4 和 Qwen）
-        """
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.temperature = temperature
-        self.top_p = top_p
+    def __init__(
+        self,
+        model_name_cuda: str = "THUDM/glm-4-9b-chat",
+        model_name_cpu: str = "Qwen/Qwen2.5-0.5B-Instruct",
+        model_path_cuda: Optional[str] = None,
+        model_path_cpu: Optional[str] = None,
+        max_new_tokens: int = 512,
+        temperature: float = 0.3,
+        top_p: float = 0.8,
+        **kwargs
+    ):
+        super().__init__(
+            model_name_cuda=model_name_cuda,
+            model_name_cpu=model_name_cpu,
+            model_path_cuda=model_path_cuda,
+            model_path_cpu=model_path_cpu,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            **kwargs
+        )
+        
+        self._device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.max_new_tokens = min(self.max_new_tokens, 768)
 
-        # 确定最终模型路径/名称
-        if self.device == "cuda" and model_path_cuda:
-            self.model_name_or_path = model_path_cuda
-            logger.info(
-                f"Using local CUDA model path: {self.model_name_or_path}")
-        elif self.device == "cpu" and model_path_cpu:
-            self.model_name_or_path = model_path_cpu
-            logger.info(
-                f"Using local CPU model path: {self.model_name_or_path}")
+        # 选择模型路径
+        if self._device == "cuda" and self.model_path_cuda:
+            self._model_path = self.model_path_cuda
+        elif self._device == "cpu" and self.model_path_cpu:
+            self._model_path = self.model_path_cpu
         else:
-            self.model_name_or_path = model_name_cuda if self.device == "cuda" else model_name_cpu
-            logger.info(f"Using HF model name: {self.model_name_or_path}")
+            self._model_path = self.model_name_cuda if self._device == "cuda" else self.model_name_cpu
 
-        # 设置HF端点（国内镜像）
+        logger.info(f"Using model: {self._model_path} on {self._device}")
+
         os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 
-        # ModelScope 处理
-        self.use_modelscope = use_modelscope
-        if self.use_modelscope:
-            try:
-                import modelscope
-                from modelscope import snapshot_download
-                self.snapshot_download = snapshot_download
-                logger.info("ModelScope initialized successfully.")
-                if not os.path.exists(self.model_name_or_path):
-                    try:
-                        self.model_name_or_path = self.snapshot_download(
-                            self.model_name_or_path, revision=revision)
-                        logger.info(
-                            f"Model downloaded via ModelScope to: {self.model_name_or_path}")
-                    except Exception as dl_e:
-                        logger.warning(
-                            f"ModelScope download failed: {dl_e}. Falling back to HF.")
-            except ImportError:
-                logger.warning(
-                    "ModelScope not installed. Please install with 'pip install modelscope' for better experience in China.")
-                self.use_modelscope = False
+        self._load_model()
 
-        # 获取模型配置
+    # -------------------------
+    # LangChain BaseLLM 接口
+    # -------------------------
+    @property
+    def _llm_type(self) -> str:
+        """返回 LLM 类型标识"""
+        if "qwen" in self._model_path.lower():
+            return "qwen"
+        elif "glm" in self._model_path.lower():
+            return "chatglm"
+        return "stable_llm"
+
+    @property
+    def model_path(self) -> str:
+        """返回模型路径（向后兼容）"""
+        return self._model_path
+
+    def _call(
+        self,
+        prompt: str,
+        stop: Optional[List[str]] = None,
+        run_manager: Optional[CallbackManagerForLLMRun] = None,
+        **kwargs: Any,
+    ) -> str:
+        """LangChain 标准接口：同步调用"""
+        # 从 prompt 中提取信息（如果是格式化后的字符串）
+        # 简单处理：直接作为 query
+        query = prompt.strip()
+        context = kwargs.get("context", "")
+        history = kwargs.get("history", [])
+
+        return self.invoke({
+            "query": query,
+            "context": context,
+            "history": history
+        })
+
+    def _generate(
+        self,
+        prompts: List[str],
+        stop: Optional[List[str]] = None,
+        run_manager: Optional[CallbackManagerForLLMRun] = None,
+        **kwargs: Any,
+    ) -> LLMResult:
+        """LangChain 标准接口：批量生成"""
+        generations = []
+        for prompt in prompts:
+            text = self._call(prompt, stop=stop, run_manager=run_manager, **kwargs)
+            generations.append([Generation(text=text)])
+        return LLMResult(generations=generations)
+
+    # -------------------------
+    # 模型加载
+    # -------------------------
+    def _load_model(self):
+        # 加载 tokenizer - 添加回退机制
         try:
-            config = AutoConfig.from_pretrained(
-                self.model_name_or_path,
-                revision=revision,
+            self._tokenizer = AutoTokenizer.from_pretrained(
+                self._model_path,
                 trust_remote_code=True,
-                use_auth_token=os.getenv("HF_API_TOKEN")
-            )
-            model_max_length = getattr(config, "model_max_length",
-                                       getattr(config, "max_position_embeddings",
-                                               getattr(config, "n_positions", 8192)))
-        except Exception as e:
-            logger.warning(
-                f"Could not load config, using default length (8192): {e}")
-            model_max_length = 8192
-
-        self.max_new_tokens = min(max_new_tokens, 768)  # 限制最大生成长度
-        self.max_total_tokens = model_max_length - self.max_new_tokens
-
-        logger.info(f'Device: {self.device}')
-        logger.info(f'Model source: {self.model_name_or_path}')
-        logger.info(
-            f'Max context: {model_max_length}, Max new tokens: {self.max_new_tokens}, Max input: {self.max_total_tokens}')
-
-        # 加载模型和分词器
-        try:
-            self.load_model_and_tokenizer(revision)
-        except (ConnectionError, ChunkedEncodingError) as conn_e:
-            logger.error(
-                f"Network error during loading: {conn_e}. This might be due to network issues to Hugging Face.")
-            logger.info(
-                "You can try: 1) Use a VPN; 2) Set use_modelscope=True; 3) Manually download the model and provide local path.")
-            raise RuntimeError(
-                f"Model loading failed due to network issues: {str(conn_e)}")
-        except Exception as e:
-            logger.error(f"Model initialization failed: {e}")
-            raise RuntimeError(f"Model initialization failed: {str(e)}")
-
-    def load_model_and_tokenizer(self, revision: str):
-        """加载分词器和模型"""
-        # 加载分词器 - 添加回退机制处理 fast tokenizer 兼容性问题
-        try:
-            self.tokenizer = AutoTokenizer.from_pretrained(
-                self.model_name_or_path,
-                trust_remote_code=True,
-                revision=revision,
-                use_auth_token=os.getenv("HF_API_TOKEN"),
-                use_fast=True  # 优先使用 fast tokenizer
+                use_fast=True,
             )
         except Exception as fast_error:
             logger.warning(f"Failed to load fast tokenizer: {fast_error}")
             logger.info("Falling back to slow tokenizer (use_fast=False)")
-            try:
-                self.tokenizer = AutoTokenizer.from_pretrained(
-                    self.model_name_or_path,
-                    trust_remote_code=True,
-                    revision=revision,
-                    use_auth_token=os.getenv("HF_API_TOKEN"),
-                    use_fast=False  # 使用 slow tokenizer
-                )
-            except Exception as slow_error:
-                logger.error(f"Failed to load slow tokenizer: {slow_error}")
-                raise RuntimeError(f"Tokenizer loading failed with both fast and slow tokenizers. Fast error: {fast_error}, Slow error: {slow_error}")
-        if self.tokenizer.pad_token is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
-            logger.info(
-                f"Set pad_token to eos_token: {self.tokenizer.pad_token}")
+            self._tokenizer = AutoTokenizer.from_pretrained(
+                self._model_path,
+                trust_remote_code=True,
+                use_fast=False,
+            )
 
-        # 判断模型类型
-        self.is_chatglm = "glm" in self.model_name_or_path.lower()
-        self.is_qwen = "qwen" in self.model_name_or_path.lower()
+        if self._tokenizer.pad_token is None:
+            self._tokenizer.pad_token = self._tokenizer.eos_token
 
-        # 动态计算所需的 torch_dtype（参考 Qwen3 示例，使用 "auto"）
-        if self.device == "cuda":
-            # CUDA 模式下使用自动类型推断
-            dtype = "auto"
-        else:
-            # CPU 模式使用 float32
-            dtype = torch.float32
+        torch_dtype = torch.float16 if self._device == "cuda" else torch.float32
 
-        # 加载模型（参考 Qwen3 示例）
-        self.model = AutoModelForCausalLM.from_pretrained(
-            self.model_name_or_path,
+        self._model = AutoModelForCausalLM.from_pretrained(
+            self._model_path,
             trust_remote_code=True,
-            revision=revision,
-            dtype=dtype,
-            device_map="auto" if self.device == "cuda" else None,
-            low_cpu_mem_usage=True
+            dtype=torch_dtype,
+            device_map="auto" if self._device == "cuda" else None,
+            low_cpu_mem_usage=True,
         )
 
-        # 设置停止条件 - 添加更多停止词来提前终止生成
-        stop_words = ["。", "！", "？", "\n\n",
-                      "请回答...",
-                      "如果还有其他问题.*$",
-                      "感谢.*提问.*$",
-                      "这是我.*回答.*$",
-                      "希望能.*帮助.*$"]
-        self.stop_criteria = StopOnTokens(self.tokenizer, stop_words)
+        self._model.eval()
 
-        # 设置生成配置
-        self.generation_config = GenerationConfig.from_model_config(
-            self.model.config)
-        self.generation_config.max_new_tokens = self.max_new_tokens
-        self.generation_config.do_sample = True
-        self.generation_config.temperature = self.temperature
-        self.generation_config.top_p = self.top_p
-        self.generation_config.repetition_penalty = 1.2  # 增加重复惩罚
-        self.generation_config.pad_token_id = self.tokenizer.pad_token_id
+        self._generation_config = GenerationConfig(
+            max_new_tokens=self.max_new_tokens,
+            do_sample=False,          # RAG 场景强烈推荐 False
+            temperature=self.temperature,
+            top_p=self.top_p,
+            repetition_penalty=1.1,
+            pad_token_id=self._tokenizer.pad_token_id,
+            eos_token_id=self._tokenizer.eos_token_id,
+        )
 
-        self.model.eval()
-        self._history = []
-        logger.info(
-            f"Model loaded successfully. Type: {'ChatGLM-4' if self.is_chatglm else 'Qwen/Other'}")
+        logger.info("Model loaded successfully")
 
-    def truncate_history(self, history: List[Tuple[str, str]], max_tokens: int) -> List[Tuple[str, str]]:
-        """截断 history，保证总 token 数不超 max_tokens"""
-        if max_tokens <= 0:
-            return []
+    # -------------------------
+    # 构建 messages（压缩 30% token）
+    # -------------------------
+    def build_messages(
+        self,
+        query: str,
+        context: str,
+        history: List[Tuple[str, str]],
+    ) -> List[Dict[str, str]]:
+        # 压缩系统提示词（减少约 30% token）
+        messages = [
+            {
+                "role": "system",
+                "content": "基于文档回答问题。要求：1.直接结论 2.严格基于文档 3.无信息则说明未找到 4.无客套话"
+            }
+        ]
 
-        total_tokens = 0
-        truncated = []
+        # 压缩历史对话格式
+        for q, a in history:
+            messages.append({"role": "user", "content": q})
+            messages.append({"role": "assistant", "content": a})
 
-        # 过滤和验证历史记录格式
-        valid_history = []
-        for item in history:
-            if isinstance(item, (tuple, list)) and len(item) == 2:
-                question, answer = item
-                if isinstance(question, str) and isinstance(answer, str):
-                    valid_history.append((question, answer))
-                else:
-                    logger.warning(f"跳过无效的历史记录项（非字符串类型）: {item}")
-            else:
-                logger.warning(f"跳过格式错误的历史记录项: {item}")
-
-        # 如果没有有效历史记录，返回空列表
-        if not valid_history:
-            return []
-
-        # 处理有效历史记录
-        for q, a in reversed(valid_history):
-            q_tokens = self.tokenizer.encode(q, add_special_tokens=False)
-            a_tokens = self.tokenizer.encode(a, add_special_tokens=False)
-            tokens_count = len(q_tokens) + len(a_tokens)
-
-            if total_tokens + tokens_count > max_tokens:
-                break
-            truncated.insert(0, (q, a))
-            total_tokens += tokens_count
-
-        logger.debug(
-            f"Truncated history from {len(history)} to {len(truncated)} items, tokens: {total_tokens}")
-        return truncated
-
-    def convert_history_to_messages(self, history: List[Tuple[str, str]]) -> List[Dict[str, str]]:
-        """将历史对话转换为消息格式"""
-        messages = []
-
-        # 过滤和验证历史记录格式
-        valid_history = []
-        for item in history:
-            if isinstance(item, (tuple, list)) and len(item) == 2:
-                question, answer = item
-                if isinstance(question, str) and isinstance(answer, str):
-                    valid_history.append((question, answer))
-                else:
-                    logger.warning(f"跳过无效的历史记录项（非字符串类型）: {item}")
-            else:
-                logger.warning(f"跳过格式错误的历史记录项: {item}")
-
-        # 转换有效历史记录
-        for question, answer in valid_history:
-            messages.append({"role": "user", "content": question})
-            messages.append({"role": "assistant", "content": answer})
-
-        return messages
-
-    def truncate_text(self, text: str, max_tokens: int) -> str:
-        """截断文本到指定token数量"""
-        if not text or max_tokens <= 0:
-            return ""
-
-        tokens = self.tokenizer.encode(text, add_special_tokens=False)
-        if len(tokens) > max_tokens:
-            tokens = tokens[:max_tokens]
-            truncated_text = self.tokenizer.decode(
-                tokens, skip_special_tokens=True)
-            logger.debug(
-                f"Truncated text from {len(tokens)} to {max_tokens} tokens")
-            return truncated_text
-        return text
-
-    def build_messages(self, query: str, context: str, history: List[Tuple[str, str]]) -> List[Dict[str, str]]:
-        """构建消息列表（适用于 ChatGLM-4 和 Qwen）"""
-        messages = []
-
-        # 优化的系统提示词
-        system_prompt = """你是一个专业的AI助手，请基于提供的文档内容准确回答用户问题。
-
-回答要求：
-1. 简洁明了，直接给出核心答案
-2. 如果文档中有相关信息，请基于文档内容回答
-3. 如果文档中没有相关信息，请直接说明"无法在文档中找到相关信息"
-4. 避免使用"希望以上信息对您有帮助"等客套话
-5. 保持专业、客观的语气
-
-请严格按照以上要求回答问题。"""
-        messages.append({"role": "system", "content": system_prompt})
-
-        # 添加历史对话
-        history_messages = self.convert_history_to_messages(history)
-        messages.extend(history_messages)
-
-        # 优化的上下文格式
+        # 压缩上下文格式（减少约 30% token）
         if context:
-            user_content = f"""【参考文档】
-{context}
-
-【用户问题】
-{query}
-
-请基于参考文档回答用户问题。"""
+            user_content = f"文档：{context}\n问题：{query}"
         else:
             user_content = query
 
         messages.append({"role": "user", "content": user_content})
-
         return messages
 
-    def clean_response(self, response: str) -> str:
-        """清理和精简响应内容"""
-        # 移除多余的换行和空格
-        response = re.sub(r'\n+', '\n', response).strip()
-        response = re.sub(r' +', ' ', response)
+    # -------------------------
+    # 历史截断（token 级）
+    # -------------------------
+    def truncate_history(
+        self,
+        history: List[Tuple[str, str]],
+        max_tokens: int,
+    ) -> List[Tuple[str, str]]:
+        total = 0
+        result = []
 
-        # 移除常见的啰嗦结尾
-        patterns = [
-            r'希望以上信息.*$',
-            r'如果还有其他问题.*$',
-            r'欢迎.*咨询.*$',
-            r'感谢.*提问.*$',
-            r'这是我.*回答.*$',
-            r'希望能.*帮助.*$'
-        ]
+        for q, a in reversed(history):
+            tokens = len(self._tokenizer.encode(q, add_special_tokens=False)) + len(self._tokenizer.encode(a, add_special_tokens=False))
+            if total + tokens > max_tokens:
+                break
+            result.insert(0, (q, a))
+            total += tokens
 
-        for pattern in patterns:
-            response = re.sub(pattern, '', response, flags=re.IGNORECASE)
+        return result
 
-        # 截断过长的回答
-        max_length = 300  # 字符数限制
-        if len(response) > max_length:
-            # 尝试在句子边界处截断
-            sentences = re.split(r'[。！？]', response)
-            truncated = []
-            current_length = 0
-            for sentence in sentences:
-                if current_length + len(sentence) < max_length:
-                    truncated.append(sentence)
-                    current_length += len(sentence)
-                else:
-                    break
-            if truncated:
-                response = '。'.join(truncated) + '。'
-            else:
-                response = response[:max_length] + "..."
-
-        return response.strip()
-
-    def invoke(self, input: Any, config: Optional[dict] = None, **kwargs) -> Any:
-        if not isinstance(config, dict):
-            config = {}
-
-        # 解析输入
-        if isinstance(input, str):
-            query = input
-            history = []
-            context = ""
-        elif isinstance(input, dict):
+    # -------------------------
+    # invoke（非流式）
+    # -------------------------
+    def invoke(self, input: Any, config: Optional[dict] = None) -> str:
+        if isinstance(input, dict):
             query = input.get("query", "")
-            history = input.get("history", [])
             context = input.get("context", "")
+            history = input.get("history", [])
         else:
             query = str(input)
-            history = []
             context = ""
-
-        question = query
-
-        try:
-            # 计算可用tokens
-            max_input_tokens = self.max_total_tokens
-            reserved_for_answer = int(self.max_new_tokens * 1.2)
-            available_tokens = max_input_tokens - reserved_for_answer
-
-            max_context_tokens = int(available_tokens * 0.5)
-            max_history_tokens = int(available_tokens * 0.3)
-            max_query_tokens = available_tokens - max_context_tokens - max_history_tokens
-
-            # 截断内容
-            context = self.truncate_text(context, max_context_tokens)
-            query = self.truncate_text(query, max_query_tokens)
-            safe_history = self.truncate_history(history, max_history_tokens)
-
-            # 构建消息
-            messages = self.build_messages(query, context, safe_history)
-            logger.debug(f"messages: {messages}")
-            # 应用聊天模板（参考 Qwen3 示例，但 Qwen2.5 不支持 thinking 模式）
-            if hasattr(self.tokenizer, 'apply_chat_template'):
-                text = self.tokenizer.apply_chat_template(
-                    messages,
-                    tokenize=False,
-                    add_generation_prompt=True,
-                    enable_thinking=True # Switches between thinking and non-thinking modes. Default is True. Qwen2.5 不支持 enable_thinking 参数
-                )
-            else:
-                # 回退到简单格式
-                text = f"{messages[-1]['content']}"
-
-            # 编码输入
-            model_inputs = self.tokenizer([text], return_tensors="pt").to(self.device)
-
-            # 生成回复（参考 Qwen3 示例）
-            with torch.no_grad():
-                generated_ids = self.model.generate(
-                    **model_inputs,
-                    max_new_tokens=self.max_new_tokens,
-                    do_sample=True,
-                    temperature=self.temperature,
-                    top_p=self.top_p,
-                    repetition_penalty=1.2,
-                    pad_token_id=self.tokenizer.pad_token_id,
-                    eos_token_id=self.tokenizer.eos_token_id,
-                    stopping_criteria=StoppingCriteriaList([self.stop_criteria]) if self.stop_criteria else None
-                )
-
-            # 解码输出（跳过输入部分，参考 Qwen3 示例）
-            output_ids = generated_ids[0][len(model_inputs.input_ids[0]):].tolist()
-
-            # parsing thinking content
-            try:
-                # rindex finding 151668 (</think>)
-                index = len(output_ids) - output_ids[::-1].index(151668)
-            except ValueError:
-                index = 0
-
-            thinking_content = self.tokenizer.decode(output_ids[:index], skip_special_tokens=True).strip("\n")
-            logger.info(f"thinking_content: {thinking_content}")
-            response = self.tokenizer.decode(output_ids, skip_special_tokens=True).strip()
-
-            # 清理和精简响应
-            response = self.clean_response(response)
-
-            self._history.append((question, response))
-            logger.info(f"模型回复长度: {len(response)} 字符")
-            return response
-
-        except Exception as e:
-            logger.error(f"invoke 模型调用失败: {e}, query: {query}", exc_info=True)
-            raise RuntimeError(f"处理问题失败: {str(e)}")
-
-    def stream(self, input: Any, config: Optional[dict] = None, **kwargs) -> Generator[str, None, None]:
-        """流式生成响应"""
-        if isinstance(input, str):
-            query = input
             history = []
-            context = ""
-        elif isinstance(input, dict):
+
+        max_context_tokens = 2048
+        max_history_tokens = 1024
+
+        context = self._truncate_text(context, max_context_tokens)
+        history = self.truncate_history(history, max_history_tokens)
+
+        messages = self.build_messages(query, context, history)
+
+        # 安全调用 chat template
+        if hasattr(self._tokenizer, "apply_chat_template"):
+            text = self._tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+        else:
+            text = messages[-1]["content"]
+
+        inputs = self._tokenizer(text, return_tensors="pt").to(self._device)
+
+        with torch.no_grad():
+            output_ids = self._model.generate(
+                **inputs,
+                generation_config=self._generation_config,
+            )
+
+        output = self._tokenizer.decode(
+            output_ids[0][inputs["input_ids"].shape[1]:],
+            skip_special_tokens=True,
+        )
+
+        output = self._clean_response(output)
+        self._history.append((query, output))
+        return output
+
+    # -------------------------
+    # Stream（同步流式）
+    # -------------------------
+    def stream(self, input: Any, config: Optional[dict] = None) -> Generator[str, None, None]:
+        """同步流式生成"""
+        if isinstance(input, dict):
             query = input.get("query", "")
-            history = input.get("history", [])
             context = input.get("context", "")
+            history = input.get("history", [])
         else:
             query = str(input)
-            history = []
             context = ""
+            history = []
 
-        question = query
+        max_context_tokens = 2048
+        max_history_tokens = 1024
 
-        try:
-            # 计算可用tokens
-            max_input_tokens = self.max_total_tokens
-            reserved_for_answer = int(self.max_new_tokens * 1.2)
-            available_tokens = max_input_tokens - reserved_for_answer
+        context = self._truncate_text(context, max_context_tokens)
+        history = self.truncate_history(history, max_history_tokens)
 
-            max_context_tokens = int(available_tokens * 0.5)
-            max_history_tokens = int(available_tokens * 0.3)
-            max_query_tokens = available_tokens - max_context_tokens - max_history_tokens
+        messages = self.build_messages(query, context, history)
 
-            # 截断内容
-            context = self.truncate_text(context, max_context_tokens)
-            query = self.truncate_text(query, max_query_tokens)
-            safe_history = self.truncate_history(history, max_history_tokens)
-
-            # 构建消息
-            messages = self.build_messages(query, context, safe_history)
-
-            # 应用聊天模板（参考 Qwen3 示例）
-            if hasattr(self.tokenizer, 'apply_chat_template'):
-                text = self.tokenizer.apply_chat_template(
-                    messages,
-                    tokenize=False,
-                    add_generation_prompt=True
-                )
-            else:
-                text = f"{messages[-1]['content']}\n\n请回答："
-
-            # 编码输入（参考 Qwen3 示例）
-            model_inputs = self.tokenizer([text], return_tensors="pt").to(self.device)
-
-            # 创建流式生成器
-            streamer = TextIteratorStreamer(
-                self.tokenizer,
-                skip_prompt=True,
-                skip_special_tokens=True,
-                timeout=60.0
+        if hasattr(self._tokenizer, "apply_chat_template"):
+            text = self._tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
             )
+        else:
+            text = messages[-1]["content"]
 
-            generation_kwargs = dict(
-                **model_inputs,
-                max_new_tokens=self.max_new_tokens,
-                do_sample=True,
-                temperature=self.temperature,
-                top_p=self.top_p,
-                repetition_penalty=1.2,
-                pad_token_id=self.tokenizer.pad_token_id,
-                eos_token_id=self.tokenizer.eos_token_id,
-                streamer=streamer
-            )
+        model_inputs = self._tokenizer([text], return_tensors="pt").to(self._device)
 
-            # 在单独线程中生成
-            thread = Thread(target=self.model.generate,
-                            kwargs=generation_kwargs)
-            thread.start()
+        # 创建流式生成器
+        streamer = TextIteratorStreamer(
+            self._tokenizer,
+            skip_prompt=True,
+            skip_special_tokens=True,
+            timeout=60.0
+        )
 
-            # 流式输出
-            partial_response = ""
-            for new_text in streamer:
-                partial_response += new_text
-                yield new_text
+        generation_kwargs = dict(
+            **model_inputs,
+            generation_config=self._generation_config,
+            streamer=streamer
+        )
 
-            self._history.append((question, partial_response))
-            logger.info(f"模型（流式）回复完成")
+        # 在单独线程中生成
+        thread = Thread(target=self._model.generate, kwargs=generation_kwargs)
+        thread.start()
 
-        except Exception as e:
-            logger.error(
-                f"stream 模型流式调用失败: {e}, query: {query}", exc_info=True)
-            raise RuntimeError(f"流式处理失败: {str(e)}")
+        # 流式输出
+        for new_text in streamer:
+            yield new_text
 
-    async def astream(self, input: Any, config: Optional[dict] = None, **kwargs) -> Generator[str, None, None]:
-        """异步流式生成"""
+    # -------------------------
+    # astream（异步流式）
+    # -------------------------
+    async def astream(self, input: Any, config: Optional[dict] = None) -> AsyncGenerator[str, None]:
+        """异步流式生成（SSE 兼容）"""
         loop = asyncio.get_event_loop()
 
         def _stream_wrapper():
-            return self.stream(input, config=config, **kwargs)
+            return self.stream(input, config=config)
 
+        # 在线程池中执行同步流式生成
         stream = await loop.run_in_executor(None, _stream_wrapper)
+        
         for chunk in stream:
             yield chunk
+
+    # -------------------------
+    # 工具函数
+    # -------------------------
+    def _truncate_text(self, text: str, max_tokens: int) -> str:
+        tokens = self._tokenizer.encode(text, add_special_tokens=False)
+        if len(tokens) <= max_tokens:
+            return text
+        return self._tokenizer.decode(tokens[:max_tokens], skip_special_tokens=True)
+
+    def _clean_response(self, text: str) -> str:
+        text = re.sub(r"\n+", "\n", text).strip()
+        patterns = [
+            r"如果还有其他问题.*$",
+            r"希望以上信息.*$",
+            r"感谢.*提问.*$",
+        ]
+        for p in patterns:
+            text = re.sub(p, "", text, flags=re.IGNORECASE)
+        return text.strip()
+
+
+# -------------------------
+# LLMFactory：自动选择模型
+# -------------------------
+class LLMFactory:
+    """LLM 工厂类：根据模型名称自动选择 Qwen / GLM"""
+
+    @staticmethod
+    def create_llm(
+        model_name: Optional[str] = None,
+        model_name_cuda: str = "THUDM/glm-4-9b-chat",
+        model_name_cpu: str = "Qwen/Qwen2.5-0.5B-Instruct",
+        **kwargs
+    ) -> StableLLM:
+        """
+        创建 LLM 实例，自动识别模型类型
+        
+        Args:
+            model_name: 指定模型名称（可选，会覆盖默认值）
+            model_name_cuda: CUDA 默认模型
+            model_name_cpu: CPU 默认模型
+            **kwargs: 其他参数传递给 StableLLM
+        
+        Returns:
+            StableLLM 实例
+        """
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        
+        # 如果指定了 model_name，根据设备选择
+        if model_name:
+            if device == "cuda":
+                model_name_cuda = model_name
+            else:
+                model_name_cpu = model_name
+        
+        # 自动识别模型类型并设置默认值
+        default_cuda = model_name_cuda
+        default_cpu = model_name_cpu
+        
+        # 如果模型名称包含 qwen，优先使用 Qwen 系列
+        if model_name and "qwen" in model_name.lower():
+            if device == "cuda":
+                default_cuda = model_name
+            else:
+                default_cpu = model_name
+        # 如果模型名称包含 glm，优先使用 GLM 系列
+        elif model_name and "glm" in model_name.lower():
+            if device == "cuda":
+                default_cuda = model_name
+            else:
+                default_cpu = model_name
+        
+        logger.info(f"LLMFactory: Creating LLM for {device}, model_cuda={default_cuda}, model_cpu={default_cpu}")
+        
+        return StableLLM(
+            model_name_cuda=default_cuda,
+            model_name_cpu=default_cpu,
+            **kwargs
+        )
+
+    @staticmethod
+    def create_qwen_llm(**kwargs) -> StableLLM:
+        """创建 Qwen 系列 LLM"""
+        return LLMFactory.create_llm(
+            model_name_cuda="Qwen/Qwen2.5-7B-Instruct",
+            model_name_cpu="Qwen/Qwen2.5-0.5B-Instruct",
+            **kwargs
+        )
+
+    @staticmethod
+    def create_glm_llm(**kwargs) -> StableLLM:
+        """创建 GLM 系列 LLM"""
+        return LLMFactory.create_llm(
+            model_name_cuda="THUDM/glm-4-9b-chat",
+            model_name_cpu="THUDM/glm-4-9b-chat",  # GLM 主要支持 CUDA
+            **kwargs
+        )
+
+    @staticmethod
+    def create_qwen3_llm(**kwargs) -> StableLLM:
+        """创建 Qwen3 系列 LLM"""
+        return LLMFactory.create_llm(
+            model_name_cuda="Qwen/Qwen3-7B-Instruct",
+            model_name_cpu="Qwen/Qwen3-0.6B",
+            **kwargs
+        )
+
+# 为了向后兼容，保留别名
+ChatGLMLLM = LLMFactory.create_qwen3_llm()
