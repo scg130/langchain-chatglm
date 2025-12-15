@@ -2,8 +2,11 @@ import os
 import re
 import asyncio
 import torch
+import threading
+import signal
 from typing import Any, Dict, List, Tuple, Optional, Generator, AsyncGenerator
-from threading import Thread
+from threading import Thread, Semaphore
+from contextlib import contextmanager, asynccontextmanager
 from pydantic import Field, PrivateAttr
 from transformers import (
     AutoTokenizer,
@@ -32,6 +35,8 @@ class StableLLM(BaseLLM):
     max_new_tokens: int = Field(default=512)
     temperature: float = Field(default=0.3)
     top_p: float = Field(default=0.8)
+    max_concurrent_requests: int = Field(default=3, description="最大并发请求数")
+    request_timeout: float = Field(default=120.0, description="请求超时时间（秒）")
 
     # 使用 PrivateAttr 存储非 Pydantic 字段
     _device: str = PrivateAttr()
@@ -40,6 +45,8 @@ class StableLLM(BaseLLM):
     _tokenizer: Any = PrivateAttr()
     _model: Any = PrivateAttr()
     _generation_config: Any = PrivateAttr()
+    _sync_semaphore: Semaphore = PrivateAttr()
+    _async_semaphore: asyncio.Semaphore = PrivateAttr()
 
     def __init__(
         self,
@@ -50,6 +57,8 @@ class StableLLM(BaseLLM):
         max_new_tokens: int = 512,
         temperature: float = 0.3,
         top_p: float = 0.8,
+        max_concurrent_requests: int = 3,
+        request_timeout: float = 120.0,
         **kwargs
     ):
         super().__init__(
@@ -60,11 +69,18 @@ class StableLLM(BaseLLM):
             max_new_tokens=max_new_tokens,
             temperature=temperature,
             top_p=top_p,
+            max_concurrent_requests=max_concurrent_requests,
+            request_timeout=request_timeout,
             **kwargs
         )
         
         self._device = "cuda" if torch.cuda.is_available() else "cpu"
         self.max_new_tokens = min(self.max_new_tokens, 768)
+        
+        # 初始化并发限流器
+        self._sync_semaphore = Semaphore(self.max_concurrent_requests)
+        # 异步信号量需要在事件循环中创建，延迟初始化
+        self._async_semaphore = None
 
         # 选择模型路径
         if self._device == "cuda" and self.model_path_cuda:
@@ -179,6 +195,61 @@ class StableLLM(BaseLLM):
         logger.info("Model loaded successfully")
 
     # -------------------------
+    # 并发限流和超时保护
+    # -------------------------
+    @contextmanager
+    def _rate_limit_context(self):
+        """同步并发限流上下文管理器"""
+        acquired = False
+        try:
+            acquired = self._sync_semaphore.acquire(timeout=30.0)
+            if not acquired:
+                raise RuntimeError("请求限流：无法获取处理槽位，请稍后重试")
+            yield
+        finally:
+            if acquired:
+                self._sync_semaphore.release()
+
+    @asynccontextmanager
+    async def _async_rate_limit_context(self):
+        """异步并发限流上下文管理器"""
+        if self._async_semaphore is None:
+            # 延迟初始化异步信号量
+            try:
+                loop = asyncio.get_event_loop()
+                self._async_semaphore = asyncio.Semaphore(self.max_concurrent_requests)
+            except RuntimeError:
+                # 如果没有事件循环，创建一个新的
+                self._async_semaphore = asyncio.Semaphore(self.max_concurrent_requests)
+        
+        acquired = False
+        try:
+            await asyncio.wait_for(
+                self._async_semaphore.acquire(),
+                timeout=30.0
+            )
+            acquired = True
+            yield
+        except asyncio.TimeoutError:
+            raise RuntimeError("请求限流：无法获取处理槽位，请稍后重试")
+        finally:
+            if acquired:
+                self._async_semaphore.release()
+
+    def _execute_with_timeout(self, func, *args, **kwargs):
+        """同步执行函数，带超时保护"""
+        import concurrent.futures
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(func, *args, **kwargs)
+            try:
+                result = future.result(timeout=self.request_timeout)
+                return result
+            except concurrent.futures.TimeoutError:
+                future.cancel()
+                raise TimeoutError(f"请求超时：超过 {self.request_timeout} 秒未完成")
+
+    # -------------------------
     # 构建 messages（压缩 30% token）
     # -------------------------
     def build_messages(
@@ -230,123 +301,158 @@ class StableLLM(BaseLLM):
         return result
 
     # -------------------------
-    # invoke（非流式）
+    # invoke（非流式）- 带并发限流和超时保护
     # -------------------------
     def invoke(self, input: Any, config: Optional[dict] = None) -> str:
-        if isinstance(input, dict):
-            query = input.get("query", "")
-            context = input.get("context", "")
-            history = input.get("history", [])
-        else:
-            query = str(input)
-            context = ""
-            history = []
+        """调用模型生成回复，带并发限流和超时保护"""
+        def _invoke_internal():
+            if isinstance(input, dict):
+                query = input.get("query", "")
+                context = input.get("context", "")
+                history = input.get("history", [])
+            else:
+                query = str(input)
+                context = ""
+                history = []
 
-        max_context_tokens = 2048
-        max_history_tokens = 1024
+            max_context_tokens = 2048
+            max_history_tokens = 1024
 
-        context = self._truncate_text(context, max_context_tokens)
-        history = self.truncate_history(history, max_history_tokens)
+            context = self._truncate_text(context, max_context_tokens)
+            history = self.truncate_history(history, max_history_tokens)
 
-        messages = self.build_messages(query, context, history)
+            messages = self.build_messages(query, context, history)
 
-        # 安全调用 chat template
-        if hasattr(self._tokenizer, "apply_chat_template"):
-            text = self._tokenizer.apply_chat_template(
-                messages,
-                tokenize=False,
-                add_generation_prompt=True,
+            # 安全调用 chat template
+            if hasattr(self._tokenizer, "apply_chat_template"):
+                text = self._tokenizer.apply_chat_template(
+                    messages,
+                    tokenize=False,
+                    add_generation_prompt=True,
+                )
+            else:
+                text = messages[-1]["content"]
+
+            inputs = self._tokenizer(text, return_tensors="pt").to(self._device)
+
+            with torch.no_grad():
+                output_ids = self._model.generate(
+                    **inputs,
+                    generation_config=self._generation_config,
+                )
+
+            output = self._tokenizer.decode(
+                output_ids[0][inputs["input_ids"].shape[1]:],
+                skip_special_tokens=True,
             )
-        else:
-            text = messages[-1]["content"]
 
-        inputs = self._tokenizer(text, return_tensors="pt").to(self._device)
+            output = self._clean_response(output)
+            self._history.append((query, output))
+            return output
 
-        with torch.no_grad():
-            output_ids = self._model.generate(
-                **inputs,
-                generation_config=self._generation_config,
-            )
-
-        output = self._tokenizer.decode(
-            output_ids[0][inputs["input_ids"].shape[1]:],
-            skip_special_tokens=True,
-        )
-
-        output = self._clean_response(output)
-        self._history.append((query, output))
-        return output
+        # 应用并发限流和超时保护
+        with self._rate_limit_context():
+            try:
+                return self._execute_with_timeout(_invoke_internal)
+            except TimeoutError as e:
+                logger.error(f"请求超时: {e}")
+                raise RuntimeError(str(e))
+            except Exception as e:
+                logger.error(f"请求处理失败: {e}")
+                raise
 
     # -------------------------
-    # Stream（同步流式）
+    # Stream（同步流式）- 带并发限流
     # -------------------------
     def stream(self, input: Any, config: Optional[dict] = None) -> Generator[str, None, None]:
-        """同步流式生成"""
-        if isinstance(input, dict):
-            query = input.get("query", "")
-            context = input.get("context", "")
-            history = input.get("history", [])
-        else:
-            query = str(input)
-            context = ""
-            history = []
+        """同步流式生成，带并发限流"""
+        with self._rate_limit_context():
+            if isinstance(input, dict):
+                query = input.get("query", "")
+                context = input.get("context", "")
+                history = input.get("history", [])
+            else:
+                query = str(input)
+                context = ""
+                history = []
 
-        max_context_tokens = 2048
-        max_history_tokens = 1024
+            max_context_tokens = 2048
+            max_history_tokens = 1024
 
-        context = self._truncate_text(context, max_context_tokens)
-        history = self.truncate_history(history, max_history_tokens)
+            context = self._truncate_text(context, max_context_tokens)
+            history = self.truncate_history(history, max_history_tokens)
 
-        messages = self.build_messages(query, context, history)
+            messages = self.build_messages(query, context, history)
 
-        if hasattr(self._tokenizer, "apply_chat_template"):
-            text = self._tokenizer.apply_chat_template(
-                messages,
-                tokenize=False,
-                add_generation_prompt=True,
+            if hasattr(self._tokenizer, "apply_chat_template"):
+                text = self._tokenizer.apply_chat_template(
+                    messages,
+                    tokenize=False,
+                    add_generation_prompt=True,
+                )
+            else:
+                text = messages[-1]["content"]
+
+            model_inputs = self._tokenizer([text], return_tensors="pt").to(self._device)
+
+            # 创建流式生成器，设置超时
+            streamer = TextIteratorStreamer(
+                self._tokenizer,
+                skip_prompt=True,
+                skip_special_tokens=True,
+                timeout=self.request_timeout
             )
-        else:
-            text = messages[-1]["content"]
 
-        model_inputs = self._tokenizer([text], return_tensors="pt").to(self._device)
+            generation_kwargs = dict(
+                **model_inputs,
+                generation_config=self._generation_config,
+                streamer=streamer
+            )
 
-        # 创建流式生成器
-        streamer = TextIteratorStreamer(
-            self._tokenizer,
-            skip_prompt=True,
-            skip_special_tokens=True,
-            timeout=60.0
-        )
+            # 在单独线程中生成
+            thread = Thread(target=self._model.generate, kwargs=generation_kwargs)
+            thread.start()
 
-        generation_kwargs = dict(
-            **model_inputs,
-            generation_config=self._generation_config,
-            streamer=streamer
-        )
-
-        # 在单独线程中生成
-        thread = Thread(target=self._model.generate, kwargs=generation_kwargs)
-        thread.start()
-
-        # 流式输出
-        for new_text in streamer:
-            yield new_text
+            # 流式输出，带超时检查
+            import time
+            start_time = time.time()
+            for new_text in streamer:
+                # 检查超时
+                if time.time() - start_time > self.request_timeout:
+                    logger.warning(f"流式生成超时: 超过 {self.request_timeout} 秒")
+                    break
+                yield new_text
 
     # -------------------------
-    # astream（异步流式）
+    # astream（异步流式）- 带并发限流和超时保护
     # -------------------------
     async def astream(self, input: Any, config: Optional[dict] = None) -> AsyncGenerator[str, None]:
-        """异步流式生成（SSE 兼容）"""
-        loop = asyncio.get_event_loop()
+        """异步流式生成（SSE 兼容），带并发限流和超时保护"""
+        async with self._async_rate_limit_context():
+            try:
+                loop = asyncio.get_event_loop()
 
-        def _stream_wrapper():
-            return self.stream(input, config=config)
+                def _stream_wrapper():
+                    return self.stream(input, config=config)
 
-        # 在线程池中执行同步流式生成
-        stream = await loop.run_in_executor(None, _stream_wrapper)
-        
-        for chunk in stream:
-            yield chunk
+                # 在线程池中执行同步流式生成，带超时
+                try:
+                    stream = await asyncio.wait_for(
+                        loop.run_in_executor(None, _stream_wrapper),
+                        timeout=self.request_timeout
+                    )
+                    
+                    for chunk in stream:
+                        yield chunk
+                except asyncio.TimeoutError:
+                    logger.error(f"异步流式生成超时: 超过 {self.request_timeout} 秒")
+                    yield "[ERROR] 请求超时，请稍后重试"
+            except RuntimeError as e:
+                logger.error(f"异步流式生成限流: {e}")
+                yield f"[ERROR] {str(e)}"
+            except Exception as e:
+                logger.error(f"异步流式生成失败: {e}")
+                yield f"[ERROR] 处理失败: {str(e)}"
 
     # -------------------------
     # 工具函数
@@ -380,6 +486,8 @@ class LLMFactory:
         model_name: Optional[str] = None,
         model_name_cuda: str = "THUDM/glm-4-9b-chat",
         model_name_cpu: str = "Qwen/Qwen2.5-0.5B-Instruct",
+        max_concurrent_requests: int = 3,
+        request_timeout: float = 120.0,
         **kwargs
     ) -> StableLLM:
         """
@@ -425,6 +533,8 @@ class LLMFactory:
         return StableLLM(
             model_name_cuda=default_cuda,
             model_name_cpu=default_cpu,
+            max_concurrent_requests=max_concurrent_requests,
+            request_timeout=request_timeout,
             **kwargs
         )
 
@@ -434,6 +544,8 @@ class LLMFactory:
         return LLMFactory.create_llm(
             model_name_cuda="Qwen/Qwen2.5-7B-Instruct",
             model_name_cpu="Qwen/Qwen2.5-0.5B-Instruct",
+            max_concurrent_requests=5,
+            request_timeout=60.0,
             **kwargs
         )
 
@@ -443,6 +555,8 @@ class LLMFactory:
         return LLMFactory.create_llm(
             model_name_cuda="THUDM/glm-4-9b-chat",
             model_name_cpu="THUDM/glm-4-9b-chat",  # GLM 主要支持 CUDA
+            max_concurrent_requests=5,
+            request_timeout=60.0,
             **kwargs
         )
 
@@ -452,6 +566,8 @@ class LLMFactory:
         return LLMFactory.create_llm(
             model_name_cuda="Qwen/Qwen3-7B-Instruct",
             model_name_cpu="Qwen/Qwen3-0.6B",
+            max_concurrent_requests=5,
+            request_timeout=60.0,
             **kwargs
         )
 
