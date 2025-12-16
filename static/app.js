@@ -17,11 +17,26 @@ let newChatBtn;
 let chatList;
 
 // 状态管理
-let isStreaming = false;
 let selectedFiles = [];
 let chats = []; // 所有对话
 let currentChatId = null; // 当前对话ID
 let chatCounter = 0;
+
+// 获取当前对话的发送状态
+function isCurrentChatStreaming() {
+    if (!currentChatId) return false;
+    const chat = chats.find(c => c.id === currentChatId);
+    return chat ? (chat.isStreaming || false) : false;
+}
+
+// 设置当前对话的发送状态
+function setCurrentChatStreaming(value) {
+    if (!currentChatId) return;
+    const chat = chats.find(c => c.id === currentChatId);
+    if (chat) {
+        chat.isStreaming = value;
+    }
+}
 
 // 初始化DOM元素
 function initDOMElements() {
@@ -52,6 +67,11 @@ document.addEventListener('DOMContentLoaded', () => {
     setupEventListeners();
     loadKnowledgeBases();
     createNewChat(); // 创建第一个对话
+    
+    // 页面卸载前保存所有对话的草稿
+    window.addEventListener('beforeunload', () => {
+        saveCurrentChatDraft();
+    });
 });
 
 function setupEventListeners() {
@@ -66,9 +86,12 @@ function setupEventListeners() {
         }
     });
 
-    // 输入框变化
+    // 输入框变化 - 自动保存到当前对话的草稿
     questionInput.addEventListener('input', () => {
-        sendBtn.disabled = !questionInput.value.trim() || isStreaming;
+        // 实时保存输入框内容到当前对话
+        saveCurrentChatDraft();
+        
+        sendBtn.disabled = !questionInput.value.trim() || isCurrentChatStreaming();
         // 自动调整高度
         questionInput.style.height = 'auto';
         questionInput.style.height = Math.min(questionInput.scrollHeight, 120) + 'px';
@@ -77,11 +100,10 @@ function setupEventListeners() {
     // 添加全局错误处理，防止请求失败后状态卡住
     window.addEventListener('unhandledrejection', (event) => {
         console.error('Unhandled promise rejection:', event.reason);
-        if (isStreaming) {
+        if (isCurrentChatStreaming()) {
             console.log('Recovering from unhandled rejection...');
-            isStreaming = false;
-            if (sendBtn) sendBtn.disabled = false;
-            if (questionInput) questionInput.disabled = false;
+            setCurrentChatStreaming(false);
+            updateUIForCurrentChat();
         }
     });
 
@@ -134,23 +156,33 @@ function setupEventListeners() {
 
 async function sendMessage() {
     const question = questionInput.value.trim();
-    if (!question || isStreaming || !currentChatId) return;
+    if (!question || isCurrentChatStreaming() || !currentChatId) return;
 
+    // 保存发送时的对话ID（防止切换对话后回答显示到错误位置）
+    const sendingChatId = currentChatId;
+    
     // 获取当前对话
-    const currentChat = chats.find(c => c.id === currentChatId);
+    const currentChat = chats.find(c => c.id === sendingChatId);
     if (!currentChat) return;
 
-    // 添加到界面和聊天记录
-    displayMessage('user', question);
-    addMessageToChat('user', question);
+    // 添加到界面和聊天记录（使用发送时的对话ID）
+    displayMessageToChat('user', question, sendingChatId);
+    
+    // 清空输入框并保存（清空草稿）
     questionInput.value = '';
-    sendBtn.disabled = true;
-    questionInput.disabled = true;  // 禁用输入框防止重复提交
-    questionInput.style.height = 'auto';
-    isStreaming = true;
+    if (currentChat) {
+        currentChat.draft = '';
+    }
+    
+    // 设置发送时的对话为发送状态（只阻塞该对话）
+    const sendingChat = chats.find(c => c.id === sendingChatId);
+    if (sendingChat) {
+        sendingChat.isStreaming = true;
+    }
+    updateUIForCurrentChat();
 
-    // 显示加载指示器
-    const messageDiv = addMessageForStreaming('assistant', '');
+    // 显示加载指示器（在发送时的对话中）
+    const messageDiv = addMessageForStreamingToChat('assistant', '', sendingChatId);
     const indicator = showTypingIndicator(messageDiv);
     
     try {
@@ -205,18 +237,25 @@ async function sendMessage() {
         }
 
         const data = await response.json();
-        indicator.remove();
         
+        // 移除指示器（在发送时的对话中）
+        try {
+            if (indicator && indicator.parentNode) {
+                indicator.remove();
+            }
+        } catch (e) {
+            console.warn('Could not remove indicator:', e);
+        }
+        
+        // 将回答添加到发送时的对话（不是当前显示的对话）
         if (data.answer) {
-            displayMessage('assistant', data.answer);
-            addMessageToChat('assistant', data.answer);
+            displayMessageToChat('assistant', data.answer, sendingChatId);
         } else {
-            displayMessage('assistant', '抱歉，我没有获取到答案。');
-            addMessageToChat('assistant', '抱歉，我没有获取到答案。');
+            displayMessageToChat('assistant', '抱歉，我没有获取到答案。', sendingChatId);
         }
 
-        // 更新对话标题
-        updateChatTitle(currentChatId, question);
+        // 更新对话标题（使用发送时的对话ID）
+        updateChatTitle(sendingChatId, question);
 
     } catch (error) {
         // 安全地移除指示器
@@ -228,37 +267,57 @@ async function sendMessage() {
             console.warn('Could not remove indicator:', e);
         }
         
-        // 显示错误消息
+        // 显示错误消息（添加到发送时的对话）
         let errorMsg = '请求失败，请稍后重试';
         if (error.message) {
             errorMsg = `❌ ${error.message}`;
         }
         
-        displayMessage('assistant', errorMsg);
-        addMessageToChat('assistant', errorMsg);
+        displayMessageToChat('assistant', errorMsg, sendingChatId);
         console.error('Error:', error);
     } finally {
-        // 无论如何都要重置状态
-        console.log('Resetting isStreaming state');
-        isStreaming = false;
-        if (sendBtn) {
-            sendBtn.disabled = false;
+        // 重置发送时的对话的发送状态
+        const sendingChat = chats.find(c => c.id === sendingChatId);
+        if (sendingChat) {
+            sendingChat.isStreaming = false;
         }
-        
-        // 移除输入框禁用（如果有的话）
-        if (questionInput) {
-            questionInput.disabled = false;
+        // 如果当前显示的对话就是发送时的对话，更新UI
+        if (currentChatId === sendingChatId) {
+            updateUIForCurrentChat();
         }
     }
 }
 
+// 根据当前对话状态更新 UI（只影响当前对话）
+function updateUIForCurrentChat() {
+    const streaming = isCurrentChatStreaming();
+    
+    if (sendBtn) {
+        // 发送按钮：如果当前对话正在发送，或者输入框为空，则禁用
+        sendBtn.disabled = streaming || !questionInput.value.trim();
+    }
+    
+    if (questionInput) {
+        // 输入框：如果当前对话正在发送，则禁用（只影响当前对话）
+        questionInput.disabled = streaming;
+        // 更新输入框高度
+        questionInput.style.height = 'auto';
+        questionInput.style.height = Math.min(questionInput.scrollHeight, 120) + 'px';
+    }
+}
+
 function createNewChat() {
+    // 保存当前对话的输入框内容（如果有）
+    saveCurrentChatDraft();
+    
     const chatId = `chat_${Date.now()}`;
     const chat = {
         id: chatId,
         title: `新对话 ${++chatCounter}`,
         messages: [],
-        createdAt: Date.now()
+        createdAt: Date.now(),
+        isStreaming: false,  // 每个对话独立的发送状态
+        draft: ''  // 每个对话独立的输入框内容
     };
     
     chats.push(chat);
@@ -269,9 +328,20 @@ function createNewChat() {
 }
 
 function loadChat(chatId) {
+    // 保存当前对话的输入框内容（如果有）
+    saveCurrentChatDraft();
+    
     currentChatId = chatId;
     const chat = chats.find(c => c.id === chatId);
     if (!chat) return;
+
+    // 确保对话对象有必要的属性
+    if (chat.isStreaming === undefined) {
+        chat.isStreaming = false;
+    }
+    if (chat.draft === undefined) {
+        chat.draft = '';
+    }
 
     // 清空消息区域
     chatMessages.innerHTML = '';
@@ -291,15 +361,37 @@ function loadChat(chatId) {
         chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 
+    // 恢复该对话的输入框内容
+    if (questionInput && chat.draft !== undefined) {
+        questionInput.value = chat.draft || '';
+        // 自动调整高度
+        questionInput.style.height = 'auto';
+        questionInput.style.height = Math.min(questionInput.scrollHeight, 120) + 'px';
+    }
+
+    // 根据当前对话状态更新 UI
+    updateUIForCurrentChat();
+    
     renderChatList();
 }
 
-function addMessageToChat(role, content) {
-    if (!currentChatId) return;
+// 保存当前对话的输入框内容
+function saveCurrentChatDraft() {
+    if (!currentChatId || !questionInput) return;
+    const chat = chats.find(c => c.id === currentChatId);
+    if (chat) {
+        chat.draft = questionInput.value || '';
+    }
+}
+
+function addMessageToChat(role, content, chatId = null) {
+    // 使用指定的 chatId，如果没有指定则使用当前对话ID
+    const targetChatId = chatId || currentChatId;
+    if (!targetChatId) return;
     
-    const currentChat = chats.find(c => c.id === currentChatId);
-    if (currentChat) {
-        currentChat.messages.push({ role, content });
+    const targetChat = chats.find(c => c.id === targetChatId);
+    if (targetChat) {
+        targetChat.messages.push({ role, content });
     }
 }
 
@@ -323,6 +415,18 @@ function displayMessage(role, content) {
     const welcomeMsg = document.querySelector('.welcome-message');
     if (welcomeMsg) {
         welcomeMsg.remove();
+    }
+}
+
+// 显示消息到指定对话（如果该对话当前正在显示，则立即显示；否则只保存到对话记录）
+function displayMessageToChat(role, content, chatId) {
+    // 先保存到对话记录
+    addMessageToChat(role, content, chatId);
+    
+    // 如果该对话当前正在显示，则立即显示消息
+    if (chatId === currentChatId) {
+        displayMessage(role, content);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 }
 
@@ -412,6 +516,20 @@ function addMessageForStreaming(role, content) {
 
     chatMessages.scrollTop = chatMessages.scrollHeight;
     
+    return messageDiv;
+}
+
+// 为指定对话添加流式消息占位符（如果该对话当前正在显示）
+function addMessageForStreamingToChat(role, content, chatId) {
+    // 如果该对话当前正在显示，则显示占位符
+    if (chatId === currentChatId) {
+        return addMessageForStreaming(role, content);
+    }
+    // 如果不在当前显示的对话，创建一个虚拟的占位符（不会显示，但可以用于后续移除）
+    const messageDiv = document.createElement('div');
+    messageDiv.style.display = 'none';
+    messageDiv.className = `message ${role}`;
+    messageDiv.setAttribute('data-chat-id', chatId);
     return messageDiv;
 }
 
