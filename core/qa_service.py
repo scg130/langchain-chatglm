@@ -5,7 +5,7 @@ from typing import Any, AsyncGenerator, Dict, List, Literal, Optional, Tuple
 from transformers import AutoTokenizer
 
 from config.logger_config import logger
-from core.llm_chatglm import StableLLM
+from core.llm_chatglm import get_llm
 from util.func import get_qa_chain_with_history, initialize_vectordb
 from util.search import baidu_search, ddgs_search, google_search
 
@@ -80,7 +80,7 @@ class QAService:
             base_data_dir: Directory containing documents for vector databases
         """
         self.base_data_dir = base_data_dir
-        self.llm = StableLLM()
+        self.llm = get_llm()
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.llm.model_path, trust_remote_code=True)
 

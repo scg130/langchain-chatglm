@@ -172,13 +172,26 @@ class StableLLM(BaseLLM):
 
         torch_dtype = torch.float16 if self._device == "cuda" else torch.float32
 
-        self._model = AutoModelForCausalLM.from_pretrained(
-            self._model_path,
-            trust_remote_code=True,
-            dtype=torch_dtype,
-            device_map="auto" if self._device == "cuda" else None,
-            low_cpu_mem_usage=True,
-        )
+        # 尝试加载模型，如果失败则抛出更清晰的错误
+        try:
+            self._model = AutoModelForCausalLM.from_pretrained(
+                self._model_path,
+                trust_remote_code=True,
+                torch_dtype=torch_dtype,
+                device_map="auto" if self._device == "cuda" else None,
+                low_cpu_mem_usage=True,
+            )
+        except ValueError as e:
+            if "qwen3" in str(e).lower() and "does not recognize" in str(e).lower():
+                error_msg = (
+                    f"Qwen3 模型需要更新版本的 transformers 库。\n"
+                    f"当前版本: {__import__('transformers').__version__}\n"
+                    f"请运行: pip install --upgrade transformers>=4.60.0\n"
+                    f"或者使用 Qwen2.5 模型: LLMFactory.create_qwen_llm()"
+                )
+                logger.error(error_msg)
+                raise ValueError(error_msg) from e
+            raise
 
         self._model.eval()
 
@@ -426,33 +439,28 @@ class StableLLM(BaseLLM):
     # -------------------------
     # astream（异步流式）- 带并发限流和超时保护
     # -------------------------
-    async def astream(self, input: Any, config: Optional[dict] = None) -> AsyncGenerator[str, None]:
-        """异步流式生成（SSE 兼容），带并发限流和超时保护"""
+    async def astream(self, input: Any, config: Optional[dict] = None):
         async with self._async_rate_limit_context():
-            try:
-                loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
+            queue: asyncio.Queue = asyncio.Queue()
 
-                def _stream_wrapper():
-                    return self.stream(input, config=config)
-
-                # 在线程池中执行同步流式生成，带超时
+            def producer():
                 try:
-                    stream = await asyncio.wait_for(
-                        loop.run_in_executor(None, _stream_wrapper),
-                        timeout=self.request_timeout
-                    )
-                    
-                    for chunk in stream:
-                        yield chunk
-                except asyncio.TimeoutError:
-                    logger.error(f"异步流式生成超时: 超过 {self.request_timeout} 秒")
-                    yield "[ERROR] 请求超时，请稍后重试"
-            except RuntimeError as e:
-                logger.error(f"异步流式生成限流: {e}")
-                yield f"[ERROR] {str(e)}"
-            except Exception as e:
-                logger.error(f"异步流式生成失败: {e}")
-                yield f"[ERROR] 处理失败: {str(e)}"
+                    for chunk in self.stream(input, config=config):
+                        asyncio.run_coroutine_threadsafe(queue.put(chunk), loop)
+                except Exception as e:
+                    asyncio.run_coroutine_threadsafe(queue.put(f"[ERROR] {e}"), loop)
+                finally:
+                    asyncio.run_coroutine_threadsafe(queue.put(None), loop)
+
+            threading.Thread(target=producer, daemon=True).start()
+
+            while True:
+                item = await queue.get()
+                if item is None:
+                    break
+                yield item
+
 
     # -------------------------
     # 工具函数
@@ -571,5 +579,36 @@ class LLMFactory:
             **kwargs
         )
 
-# 为了向后兼容，保留别名
-ChatGLMLLM = LLMFactory.create_qwen3_llm()
+
+
+def get_llm() -> StableLLM:
+    """获取 LLM 实例，默认使用 Qwen2.5（兼容性更好）"""
+    # 检查 transformers 版本是否支持 Qwen3
+    try:
+        import transformers
+        transformers_version = transformers.__version__
+        # Qwen3 需要 transformers >= 4.60.0
+        try:
+            from packaging import version
+            version_check = version.parse(transformers_version) >= version.parse("4.60.0")
+        except (ImportError, Exception):
+            # 如果没有 packaging，使用简单的字符串比较
+            version_parts = transformers_version.split('.')
+            version_check = (
+                len(version_parts) >= 2 and
+                (int(version_parts[0]) > 4 or 
+                 (int(version_parts[0]) == 4 and int(version_parts[1]) >= 60))
+            )
+        
+        if version_check:
+            try:
+                return LLMFactory.create_qwen3_llm()
+            except Exception as e:
+                logger.warning(f"Qwen3 加载失败，回退到 Qwen2.5: {e}")
+                return LLMFactory.create_qwen_llm()
+        else:
+            logger.info(f"Transformers 版本 {transformers_version} 不支持 Qwen3，使用 Qwen2.5")
+            return LLMFactory.create_qwen_llm()
+    except Exception as e:
+        logger.warning(f"检测 transformers 版本失败，使用 Qwen2.5: {e}")
+        return LLMFactory.create_qwen_llm()
