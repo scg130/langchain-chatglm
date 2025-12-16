@@ -37,6 +37,7 @@ class StableLLM(BaseLLM):
     top_p: float = Field(default=0.8)
     max_concurrent_requests: int = Field(default=3, description="最大并发请求数")
     request_timeout: float = Field(default=120.0, description="请求超时时间（秒）")
+    system_prompt: str = Field(default="")
 
     # 使用 PrivateAttr 存储非 Pydantic 字段
     _device: str = PrivateAttr()
@@ -74,6 +75,19 @@ class StableLLM(BaseLLM):
             **kwargs
         )
         
+        self.system_prompt = (
+            "你是一个文档问答助手。\n"
+            "规则：\n"
+            "1. 只能使用提供的文档内容回答问题\n"
+            "2. 严禁使用常识、背景知识或推测\n"
+            "3. 文档中未直接给出答案时，必须原样输出：未在文档中找到相关信息\n"
+            "4. 任何超出文档的内容都视为错误\n"
+            "输出要求：\n"
+            "- 只输出最终答案\n"
+            "- 不解释、不扩展、不总结\n"
+            "- 不使用客套话\n"
+        )
+
         self._device = "cuda" if torch.cuda.is_available() else "cpu"
         self.max_new_tokens = min(self.max_new_tokens, 768)
         
@@ -275,7 +289,7 @@ class StableLLM(BaseLLM):
         messages = [
             {
                 "role": "system",
-                "content": "基于文档回答问题。要求：1.直接结论 2.严格基于文档 3.无信息则说明未找到 4.无客套话"
+                "content": self.system_prompt
             }
         ]
 
