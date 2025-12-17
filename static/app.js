@@ -96,6 +96,26 @@ function setupEventListeners() {
         questionInput.style.height = 'auto';
         questionInput.style.height = Math.min(questionInput.scrollHeight, 120) + 'px';
     });
+
+    // 网络搜索开关 - 每个对话独立
+    if (webSearchToggle) {
+        webSearchToggle.addEventListener('change', () => {
+            const chat = chats.find(c => c.id === currentChatId);
+            if (chat) {
+                chat.webSearchEnabled = webSearchToggle.checked;
+            }
+        });
+    }
+
+    // 知识库选择 - 每个对话独立
+    if (dirSelect) {
+        dirSelect.addEventListener('change', () => {
+            const chat = chats.find(c => c.id === currentChatId);
+            if (chat) {
+                chat.selectedDir = dirSelect.value || '';
+            }
+        });
+    }
     
     // 添加全局错误处理，防止请求失败后状态卡住
     window.addEventListener('unhandledrejection', (event) => {
@@ -161,24 +181,19 @@ async function sendMessage() {
     // 保存发送时的对话ID（防止切换对话后回答显示到错误位置）
     const sendingChatId = currentChatId;
     
-    // 获取当前对话
-    const currentChat = chats.find(c => c.id === sendingChatId);
-    if (!currentChat) return;
+    // 获取发送时的对话
+    const sendingChat = chats.find(c => c.id === sendingChatId);
+    if (!sendingChat) return;
 
     // 添加到界面和聊天记录（使用发送时的对话ID）
     displayMessageToChat('user', question, sendingChatId);
     
     // 清空输入框并保存（清空草稿）
     questionInput.value = '';
-    if (currentChat) {
-        currentChat.draft = '';
-    }
+    sendingChat.draft = '';
     
     // 设置发送时的对话为发送状态（只阻塞该对话）
-    const sendingChat = chats.find(c => c.id === sendingChatId);
-    if (sendingChat) {
-        sendingChat.isStreaming = true;
-    }
+    sendingChat.isStreaming = true;
     updateUIForCurrentChat();
 
     // 显示加载指示器（在发送时的对话中）
@@ -186,9 +201,13 @@ async function sendMessage() {
     const indicator = showTypingIndicator(messageDiv);
     
     try {
+        // 同步当前UI的开关/知识库到发送的对话
+        sendingChat.webSearchEnabled = webSearchToggle ? webSearchToggle.checked : false;
+        sendingChat.selectedDir = dirSelect ? (dirSelect.value || '') : '';
+
         // 构建历史对话
         const historyPairs = [];
-        const messages = currentChat.messages.filter(m => m.role !== 'system');
+        const messages = sendingChat.messages.filter(m => m.role !== 'system');
         
         for (let i = 0; i < messages.length; i += 2) {
             if (messages[i] && messages[i + 1] && messages[i].role === 'user') {
@@ -200,8 +219,8 @@ async function sendMessage() {
         const requestData = {
             question: question,
             history: historyPairs,
-            is_web_search: webSearchToggle.checked,
-            dir_path: dirSelect.value || ""
+            is_web_search: sendingChat.webSearchEnabled || false,
+            dir_path: sendingChat.selectedDir || ""
         };
         
         console.log('Sending request:', requestData);
@@ -317,7 +336,9 @@ function createNewChat() {
         messages: [],
         createdAt: Date.now(),
         isStreaming: false,  // 每个对话独立的发送状态
-        draft: ''  // 每个对话独立的输入框内容
+        draft: '',  // 每个对话独立的输入框内容
+        webSearchEnabled: webSearchToggle ? webSearchToggle.checked : false, // 每个对话独立的网络搜索开关
+        selectedDir: dirSelect ? (dirSelect.value || '') : '' // 每个对话独立的知识库选择
     };
     
     chats.push(chat);
@@ -341,6 +362,12 @@ function loadChat(chatId) {
     }
     if (chat.draft === undefined) {
         chat.draft = '';
+    }
+    if (chat.webSearchEnabled === undefined) {
+        chat.webSearchEnabled = webSearchToggle ? webSearchToggle.checked : false;
+    }
+    if (chat.selectedDir === undefined) {
+        chat.selectedDir = dirSelect ? (dirSelect.value || '') : '';
     }
 
     // 清空消息区域
@@ -371,6 +398,22 @@ function loadChat(chatId) {
 
     // 根据当前对话状态更新 UI
     updateUIForCurrentChat();
+
+    // 恢复该对话的网络搜索/知识库设置
+    if (webSearchToggle) {
+        webSearchToggle.checked = !!chat.webSearchEnabled;
+    }
+    if (dirSelect) {
+        const targetValue = chat.selectedDir || '';
+        const optionsArray = Array.from(dirSelect.options || []);
+        const optionExists = optionsArray.some(opt => opt.value === targetValue);
+        if (optionExists) {
+            dirSelect.value = targetValue;
+        } else if (optionsArray.length > 0) {
+            dirSelect.value = '';
+            chat.selectedDir = '';
+        }
+    }
     
     renderChatList();
 }
@@ -697,14 +740,18 @@ async function loadKnowledgeBases() {
         
         // 只更新知识库选择器
         if (dirSelect) {
-            const currentValue = dirSelect.value;
             dirSelect.innerHTML = options;
-            // 尝试恢复之前选择的值
-            if (currentValue) {
-                const option = Array.from(dirSelect.options).find(opt => opt.value === currentValue);
-                if (option) {
-                    dirSelect.value = currentValue;
-                }
+            // 恢复当前对话的选择
+            let targetValue = '';
+            const currentChat = chats.find(c => c.id === currentChatId);
+            if (currentChat && currentChat.selectedDir !== undefined) {
+                targetValue = currentChat.selectedDir || '';
+            }
+            const optionExists = Array.from(dirSelect.options).some(opt => opt.value === targetValue);
+            dirSelect.value = optionExists ? targetValue : '';
+            // 如果选项不存在，回退为空并同步到当前对话
+            if (!optionExists && currentChat) {
+                currentChat.selectedDir = '';
             }
             console.log('知识库列表已更新，当前选项数:', dirSelect.options.length);
         }
