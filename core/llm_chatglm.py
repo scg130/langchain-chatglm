@@ -596,33 +596,6 @@ class LLMFactory:
 
 
 def get_llm() -> StableLLM:
-    """获取 LLM 实例，默认使用 Qwen2.5（兼容性更好）"""
-    # 检查 transformers 版本是否支持 Qwen3
-    try:
-        import transformers
-        transformers_version = transformers.__version__
-        # Qwen3 需要 transformers >= 4.60.0
-        try:
-            from packaging import version
-            version_check = version.parse(transformers_version) >= version.parse("4.60.0")
-        except (ImportError, Exception):
-            # 如果没有 packaging，使用简单的字符串比较
-            version_parts = transformers_version.split('.')
-            version_check = (
-                len(version_parts) >= 2 and
-                (int(version_parts[0]) > 4 or 
-                 (int(version_parts[0]) == 4 and int(version_parts[1]) >= 60))
-            )
-        
-        if version_check:
-            try:
-                return LLMFactory.create_qwen3_llm()
-            except Exception as e:
-                logger.warning(f"Qwen3 加载失败，回退到 Qwen2.5: {e}")
-                return LLMFactory.create_qwen_llm()
-        else:
-            logger.info(f"Transformers 版本 {transformers_version} 不支持 Qwen3，使用 Qwen2.5")
-            return LLMFactory.create_qwen_llm()
-    except Exception as e:
-        logger.warning(f"检测 transformers 版本失败，使用 Qwen2.5: {e}")
-        return LLMFactory.create_qwen_llm()
+    # return LLMFactory.create_qwen3_llm()
+    return LLMFactory.create_qwen_llm()
+

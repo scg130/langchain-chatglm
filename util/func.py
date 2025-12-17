@@ -3,20 +3,13 @@ from typing import Any, List, Tuple
 import torch
 from langchain_core.prompts import PromptTemplate
 from langchain_community.chat_message_histories import RedisChatMessageHistory
-from langchain_core.runnables import RunnableLambda, RunnableMap
+from langchain_core.runnables import RunnableLambda, RunnableMap, RunnablePassthrough
 
-# LangChain 1.0 兼容性导入
+# 兼容不同版本的 langchain，缺失时提供友好提示
 try:
-    from langchain.chains import RetrievalQA
-    from langchain.memory import ConversationBufferWindowMemory
+    from langchain.memory import ConversationBufferWindowMemory  # type: ignore  # langchain>=1.0
 except ImportError:
-    try:
-        from langchain_legacy.chains import RetrievalQA
-        from langchain_legacy.memory import ConversationBufferWindowMemory
-    except ImportError:
-        # 如果都不存在，使用新的 API
-        from langchain.chains.retrieval_qa.base import RetrievalQA
-        from langchain.memory import ConversationBufferWindowMemory
+    ConversationBufferWindowMemory = None  # 允许缺省，后续运行时再提示
 
 from core.vectorstore_manager import VectorStoreManager
 
@@ -72,19 +65,28 @@ def get_qa_chain(llm: Any, retriever: Any) -> Any:
     prompt = PromptTemplate(template=prompt_template,
                             input_variables=["context", "question"])
 
-    # 创建RetrievalQA链，llm使用自定义的ChatGLMLLM，检索器为vectordb.as_retriever
-    chain = RetrievalQA.from_chain_type(
-        llm=llm,
-        # memory=get_memory(),  # 使用全局定义的内存
-        retriever=retriever,
-        chain_type="stuff",
-        chain_type_kwargs={"prompt": prompt},
-        return_source_documents=True
+    # LCEL 方式组合 RAG，兼容 langchain 1.x（无需 langchain.chains）
+    def format_docs(docs):
+        return "\n\n".join(doc.page_content for doc in docs)
+
+    rag_chain = (
+        {
+            "context": retriever | RunnableLambda(format_docs),
+            "question": RunnablePassthrough()
+        }
+        | prompt
+        | llm
     )
-    return chain
+    return rag_chain
 
 
 def get_memory():
+    if ConversationBufferWindowMemory is None:
+        raise ImportError(
+            "ConversationBufferWindowMemory 不可用。请安装 langchain>=1.0.0 "
+            "或安装兼容包（如 langchain-legacy），然后重试。"
+        )
+
     if torch.cuda.is_available():
         # 使用 GPU，启用 Redis 存储历史
         print("✅ 检测到 GPU，使用 Redis 存储对话历史")
