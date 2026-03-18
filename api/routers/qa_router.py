@@ -40,7 +40,7 @@ async def ask(request: AskRequest):
 
 @router.post("/ask/stream")
 async def ask_stream(request: Request, body: AskRequest):
-    if not body.question.strip():
+    if not (body.question or "").strip():
         return EventSourceResponse(content="data: 问题不能为空\n\n", status_code=400)
 
     async def event_generator():

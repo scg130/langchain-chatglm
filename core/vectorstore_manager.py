@@ -41,12 +41,17 @@ class VectorStoreManager:
         self.default_chunk_overlap = chunk_overlap
         os.makedirs(self.persist_dir, exist_ok=True)
 
-        logging.basicConfig(
-            filename=os.path.join(self.persist_dir, 'vectorstore.log'),
-            level=logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s'
-        )
         self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.INFO)
+        if not self.logger.handlers:
+            _fh = logging.FileHandler(
+                os.path.join(self.persist_dir, "vectorstore.log"),
+                encoding="utf-8",
+            )
+            _fh.setFormatter(
+                logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+            )
+            self.logger.addHandler(_fh)
 
     def _get_collection_name(self, dir_path: str) -> str:
         dir_hash = hashlib.md5(dir_path.encode()).hexdigest()[:8]
@@ -154,6 +159,19 @@ class VectorStoreManager:
         except Exception as e:
             self.logger.error(f"Failed to get existing source_keys: {str(e)}")
             return set()
+
+    def remove_file_vectors(self, dir_path: str, filename: str) -> None:
+        """按磁盘路径删除单个文件在向量库中的全部 chunk（用于覆盖上传）。"""
+        safe = os.path.basename(filename)
+        if not safe or safe != filename:
+            return
+        abs_file = os.path.join(os.path.abspath(dir_path), safe)
+        try:
+            vectordb = self.get_vectorstore(dir_path)
+            vectordb._collection.delete(where={"source": abs_file})
+            self.logger.info(f"已移除向量: {abs_file}")
+        except Exception as e:
+            self.logger.warning(f"移除文件向量失败 {abs_file}: {e}")
 
     def add_directory(
         self,

@@ -106,7 +106,7 @@ class StableLLM(BaseLLM):
 
         logger.info(f"Using model: {self._model_path} on {self._device}")
 
-        os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+        os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
 
         self._load_model()
 

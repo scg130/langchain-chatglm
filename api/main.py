@@ -34,7 +34,7 @@ app = FastAPI(title="智能文档问答API", version="1.0.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,  # 与 allow_origins=["*"] 同时使用时浏览器规范要求关闭 credentials
     allow_methods=["*"],
     allow_headers=["*"],
 )

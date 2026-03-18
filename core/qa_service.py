@@ -100,6 +100,11 @@ class QAService:
             'ddgs': ddgs_search,
             'baidu': baidu_search
         }
+        try:
+            from ddgs import DDGS  # noqa: F401
+            self._ddgs_available = True
+        except ImportError:
+            self._ddgs_available = False
 
         # Initialization state
         self._initialized = False
@@ -108,9 +113,11 @@ class QAService:
     @property
     def available_search_engines(self) -> List[str]:
         """Get list of available search engines."""
-        engines = ['google']
+        engines: List[str] = []
+        engines.append('google')
         if self._ddgs_available:
             engines.append('ddgs')
+        engines.append('baidu')
         return engines
 
     @property
@@ -259,6 +266,20 @@ class QAService:
 
         return results["chromadb"], results["websearch"]
 
+    async def _build_context(
+        self,
+        question: str,
+        retriever: Any,
+        is_web_search: bool,
+    ) -> str:
+        """与 ask_with_template / 流式接口共用的上下文拼接（知识库 + 联网）。"""
+        chromadb_results, websearch_results = await self._build_context_separated(
+            question, retriever, is_web_search
+        )
+        return self.template.build_context_message(
+            chromadb_results, websearch_results, question
+        )
+
     async def ask_with_template(
         self,
         question: str,
@@ -357,9 +378,13 @@ class QAService:
         history = history or []
         retriever, chain = self._get_chain_by_dir(dir_path)
 
+        # 与非流式 ask 使用同一套模板上下文，避免行为不一致
         context = await self._build_context(question, retriever, is_web_search)
-        prompt_input = {"query": question,
-                        "history": history, "context": context}
+        prompt_input = {
+            "query": question,
+            "history": history,
+            "context": context,
+        }
 
         if chain is not None:
             async for chunk in chain.astream(prompt_input):
