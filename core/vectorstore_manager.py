@@ -21,8 +21,8 @@ from langchain_community.document_loaders import (DirectoryLoader,
                                                   Docx2txtLoader, PyPDFLoader,
                                                   TextLoader,
                                                   UnstructuredFileLoader)
-from langchain_huggingface import HuggingFaceEmbeddings
 from tqdm import tqdm
+from util.sentence_text2vec import Text2VecEmbeddings
 
 
 class VectorStoreManager:
@@ -34,7 +34,8 @@ class VectorStoreManager:
         chunk_overlap: int = 50
     ):
         self.persist_dir = os.path.abspath(persist_dir)
-        self.embedding = HuggingFaceEmbeddings(model_name=embedding_model)
+        # SentenceTransformer 显式向量化，与 brain/memory 及 Chroma query_embeddings 维数一致
+        self.embedding = Text2VecEmbeddings(model_name=embedding_model)
         self._client = PersistentClient(path=self.persist_dir)
         self.vectordbs: Dict[str, Chroma] = {}
         self.default_chunk_size = chunk_size

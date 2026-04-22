@@ -1,6 +1,10 @@
 """
 长短期记忆：Chroma 持久化 + 按 user_id 元数据隔离 + 语义召回近期对话。
 
+向量化：使用 SentenceTransformer 对文本显式 encode，add 时写 embeddings，query 时传
+query_embeddings（与 shibing624/text2vec-base-chinese 写入向量同空间，避免仅 query_texts
+与自建向量混用导致检索失真）。
+
 用法（与 GBrain 配合时务必传入 current_query 做相关记忆召回）:
 
     mem = Memory()
@@ -17,8 +21,18 @@ from typing import Any, List, Optional, Union
 
 from chromadb import PersistentClient
 
+from util.sentence_text2vec import (
+    DEFAULT_T2V_MODEL,
+    encode_query_vector,
+    encode_to_chroma,
+    get_sentence_transformer,
+)
+
 _DEFAULT_DIR = os.path.join(os.path.dirname(__file__), "..", "chroma_user_memory")
 DEFAULT_PERSIST = os.path.abspath(_DEFAULT_DIR)
+
+# 与旧版（Chroma 默认 text 嵌入）不兼容，使用新 collection 名；删除旧库可手动删目录
+_COLLECTION_NAME = "gbrain_text2vec"
 
 
 def _as_text(response: Any) -> str:
@@ -40,7 +54,8 @@ class Memory:
     def __init__(
         self,
         persist_directory: str = DEFAULT_PERSIST,
-        collection_name: str = "gbrain_memory",
+        collection_name: str = _COLLECTION_NAME,
+        embedding_model: str = DEFAULT_T2V_MODEL,
     ) -> None:
         os.makedirs(persist_directory, exist_ok=True)
         self._client = PersistentClient(path=persist_directory)
@@ -48,6 +63,7 @@ class Memory:
             name=collection_name,
             metadata={"hnsw:space": "cosine"},
         )
+        self._model = get_sentence_transformer(embedding_model)
 
     def get_context(
         self,
@@ -63,8 +79,11 @@ class Memory:
         where = {"user_id": str(user_id).strip()}
 
         if (current_query or "").strip():
+            q_emb = encode_query_vector(
+                self._model, current_query.strip(), normalize_embeddings=True
+            )
             res = self._col.query(
-                query_texts=[current_query.strip()],
+                query_embeddings=[q_emb],
                 n_results=min(n_results, 20),
                 where=where,
             )
@@ -119,9 +138,11 @@ class Memory:
             return
 
         doc = f"用户: {text}\n助手: {ans}"
+        embs = encode_to_chroma(self._model, [doc], normalize_embeddings=True)
         rec_id = f"{user_id}_{time.time():.6f}_{uuid.uuid4().hex[:12]}"
         self._col.add(
             ids=[rec_id],
+            embeddings=embs,
             documents=[doc],
             metadatas=[{"user_id": str(user_id).strip(), "ts": time.time()}],
         )
