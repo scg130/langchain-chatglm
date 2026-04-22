@@ -6,7 +6,8 @@ from transformers import AutoTokenizer
 
 from config.logger_config import logger
 from core.llm_chatglm import get_llm
-from util.func import get_qa_chain_with_history, initialize_vectordb
+from util.func import initialize_vectordb
+from core.qa_graph import build_qa_rag_app, stream_rag_qa
 from util.search import baidu_search, ddgs_search, google_search
 
 
@@ -90,7 +91,7 @@ class QAService:
         # Registry for vector databases
         self.vector_registry: Dict[str, Any] = {}
         self.retriever_registry: Dict[str, Any] = {}
-        self.chain_registry: Dict[str, Any] = {}
+        self.graph_registry: Dict[str, Any] = {}
 
         # Search engine configuration
         self._search_engine: Literal['google',
@@ -199,23 +200,23 @@ class QAService:
                     "k": 5  # 只保留检索数量参数
                 }
             )
-            chain = get_qa_chain_with_history(self.llm, retriever)
+            graph_app = build_qa_rag_app(self.llm, retriever)
 
             self.vector_registry[dir_path] = vectordb
             self.retriever_registry[dir_path] = retriever
-            self.chain_registry[dir_path] = chain
+            self.graph_registry[dir_path] = graph_app
             logger.info(f"✅ 成功注册向量库: {dir_path}")
 
         except Exception as e:
             logger.error(f"❌ 注册向量库失败 {dir_path}: {e}")
 
-    def _get_chain_by_dir(self, dir_path: str) -> Tuple[Optional[Any], Optional[Any]]:
-        """Retrieve retriever and chain by directory path."""
+    def _get_graph_by_dir(self, dir_path: str) -> Tuple[Optional[Any], Optional[Any]]:
+        """Retrieve retriever and compiled LangGraph app by directory path."""
         if not dir_path:
             return None, None
         return (
             self.retriever_registry.get(dir_path),
-            self.chain_registry.get(dir_path)
+            self.graph_registry.get(dir_path)
         )
 
     def _perform_web_search(self, question: str) -> str:
@@ -299,7 +300,7 @@ class QAService:
             包含答案的字典
         """
         history = history or []
-        retriever, chain = self._get_chain_by_dir(dir_path)
+        retriever, _ = self._get_graph_by_dir(dir_path)
 
         # 分别获取chromadb和websearch结果
         chromadb_results, websearch_results = await self._build_context_separated(
@@ -376,7 +377,7 @@ class QAService:
             Chunks of the response as they're generated
         """
         history = history or []
-        retriever, chain = self._get_chain_by_dir(dir_path)
+        retriever, _ = self._get_graph_by_dir(dir_path)
 
         # 与非流式 ask 使用同一套模板上下文，避免行为不一致
         context = await self._build_context(question, retriever, is_web_search)
@@ -386,12 +387,9 @@ class QAService:
             "context": context,
         }
 
-        if chain is not None:
-            async for chunk in chain.astream(prompt_input):
-                yield chunk
-        else:
-            async for chunk in self.llm.astream(prompt_input):
-                yield chunk
+        # LangGraph 与 LCEL 等价流式：resolve 与图中一致，再 llm.astream
+        async for chunk in stream_rag_qa(self.llm, retriever, prompt_input):
+            yield chunk
 
 
 def get_limited_context_fast(query: str, retriever: Any, max_chars: int = 2000) -> str:
